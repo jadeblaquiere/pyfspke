@@ -18,4 +18,4 @@ sudo make install
 cd ..
 
 echo "INSTALLING PBC PYTHON BINDINGS"
-sudo pip3 install git+https://github.com/debatem1/pypbc.git
+sudo pip3 install git+https://github.com/jadeblaquiere/pypbc.git
