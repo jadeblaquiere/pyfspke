@@ -95,7 +95,9 @@ class CHKForwardSecurePKE (object):
         # print("updating key for node %s" % (node.nodeId()))
         node.R = parentR[:]
         node.R.append(Rpw)
-        node.S = parentS + (self.P * (pw * self.H.hashval(ordinal)))
+        H = self.P * self.H.hashval(node.nodeId())
+        print("hash for node %d = %s" % (node.nodeId(), str(H)))
+        node.S = parentS + (H * pw)
         return (node.R, node.S)
 
     def _hashlist(self, depth, ordinal):
@@ -105,7 +107,9 @@ class CHKForwardSecurePKE (object):
         else:
             phash = self._hashlist(depth-1, ordinal>>1)
             shash = phash[:]
-            shash.append(self.H.hashval(node.nodeId()))
+            H = self.P * self.H.hashval(node.nodeId())
+            print("hash for node %d = %s" % (node.nodeId(), str(H)))
+            shash.append(H)
             return shash
 
     def _enc(self, M, depth, ordinal):
@@ -115,9 +119,9 @@ class CHKForwardSecurePKE (object):
         hlist = self._hashlist(depth, ordinal)
         C = []
         C.append(self.P * lam)
-        for h in hlist:
+        for H in hlist:
             # print("type,h = ", type(h), h)
-            H = self.P * Element(self.pairing, Zr, value=h)
+            # H = self.P * h
             # print("type,H = ", type(H), H)
             C.append(H * lam)
         d = pow(self.d_precalc, lam)
@@ -144,8 +148,8 @@ class CHKForwardSecurePKE (object):
             ru = self.pairing.apply(R[i], U[i])
             pi = pi * ru
         us = self.pairing.apply(U0, S)
-        d = us * pow(pi, -1)
-        return V * pow(d, -1)
+        d = us * pow(pi, self.r - 1)
+        return V * pow(d, self.r - 1)
 
     def _node_hash(self,node):
         return self.H.hashval(self.tree.nodeId())
@@ -155,7 +159,7 @@ class CHKForwardSecurePKE (object):
         pass
 
 if __name__ == '__main__':
-    pke = CHKForwardSecurePKE(16, 512, 500)
+    pke = CHKForwardSecurePKE(16, 256, 200)
     print("params =", pke.params)
     print("q =", pke.q)
     print("h =", pke.h)
@@ -184,9 +188,9 @@ if __name__ == '__main__':
     me = pke.gt * m
     print("Random message = 0x%X" % (m))
     print("Random element = ", str(me))
-    C = pke._enc(me,8,0x35)
+    C = pke._enc(me,16,0x1234)
     print("ciphertext = ", str(C))
-    d = pke._dec(C,8,0x35)
+    d = pke._dec(C,16,0x1234)
     print("decrypted = ", str(d))
     print("m * gt = ", str(pke.gt * me))
     a = Element.random(pke.pairing, Zr)
@@ -225,6 +229,15 @@ if __name__ == '__main__':
     print("e(P,q)      = ", str(pke.gt))
     print("e((r-1)P,q) = ", str(pcheck))
     print(" sum(above) = ", str(pcheck + pke.gt))
+    gtm1 = pow(pke.gt, rm1)
+    print("gt       =", str(pke.gt))
+    print("gt ** -1 =", str(gtm1))
+    gtone = pke.gt * gtm1
+    print("gt * gti =", str(gtone))
+    r5 = Element(pke.pairing, Zr, value=5)
+    gtfive = gtone * r5
+    print("5 = ", str(r5))
+    print("1(gt) * 5 = ", str(gtfive))
     if False:
         for i in range (0, pow(2,8)):
             print("i,h(i) = %d, %X" % (i, pke.H.hashval(i)))
