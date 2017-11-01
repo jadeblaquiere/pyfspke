@@ -26,14 +26,115 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-class SimpleBTree (object):
-    """SimpleBTree implements a Simple Binary Tree with lazy allocation. Nodes
-       are created when first referenced. Supports arbitrary depth initData
-       provides a callback function which is called for each allocated node
-       to initialize local data at the node. In this way SimpleBTree can be
-       used to manage a tree of data without creating a derived class.
-       the init callback 
+class SimpleNTree (object):
+    """SimpleNTree implements a Constant Width Tree with lazy allocation.
+    Nodes are created when first referenced. Supports arbitrary depth.
+    The init parameter provides a callback function which is called for
+    each allocated node to initialize local data at the node. In this way
+    SimpleNTree can be used to manage a tree of data without creating a
+    derived class.
+    
+    Tree traversal is via virtual Method nthChild(n), which can be overridden
+    by subclass.
     """
+    def __init__(self, N, init=None):
+        """The __init__ function parameters """
+        self.parent = None
+        if (N != int(N)) or (N < 1):
+            raise ValueError("N must be positive integer")
+        self._depth = 0
+        self.N = N
+        self._ordinal = 0
+        self._child = [None] * N
+        self.nthChild = self._nthChild
+        self._init = init
+        if self._init is not None:
+            # print("calling init")
+            self._init(self)
+
+    def _nthChild(self, n):
+        """_nthChild is intended to be called as nthChild (no underbar)
+           allowing this particular routine to be overridden by subclass"""
+        if n > self.N:
+            raise ValueError("Child n out of bounds")
+        if self._child[n] is None:
+            child = SimpleNTree(self.N)
+            child.parent = self
+            child._depth = self._depth + 1
+            child._ordinal = (self.N * self._ordinal) + n
+            child._init = self._init
+            if child._init is not None:
+                child._init(child)
+            self._child[n] = child
+        return self._child[n]
+
+    def address(self):
+        """address returns position in tree as a tuple (depth, width)"""
+        return (self._depth, self._ordinal)
+
+    def nodeId(self):
+        """node_id returns unique node integer for each tree node. The root
+           node is node 0, it's left is 1 and right is 2. Node 1's children
+           are 3,4 and node 2's children are 5,6 (and so on)
+        """
+        # Id = (# in prev. rows) + ordinal (in row)
+        # there are n**k elements in the kth row
+        # from : http://homepages.gac.edu/~holte/courses/mcs256/documents/summation/top10sums.pdf
+        # SUM:k=0 to n-1(an**k) = (1 - n**k) / (1 - n)
+        if self.parent is None:
+            return 0
+        nInPrevRows = ((1 - pow(self.N, self._depth)) / (1 - self.N))
+        # print (">>address %s, nPrevRows %d, ordinal %d" %
+        #        (self.address(), nInPrevRows, self._ordinal))
+        return ((1 - pow(self.N, self._depth)) / (1 - self.N)) + self._ordinal
+
+    def findByAddress(self,depth,ordinal):
+        """find node recursively"""
+        if depth == 0:
+            # print("seeking %X, found %X" % (ordinal, self._ordinal))
+            assert ordinal == self._ordinal
+            return self
+        path = (ordinal // (pow(self.N, depth-1))) % self.N
+        return self.nthChild(path).findByAddress(depth-1, ordinal)
+
+    def __str__(self):
+        strval = "Node id %d @%s:" % (self.nodeId(), str(self.address()))
+        for n in range(0,self.N):
+            strval += " child[%d] = id %d," % (n, self.nthChild(n).nodeId())
+        return strval[:-1]
+
+
+class SimpleBTree (SimpleNTree):
+    """SimpleBTree implements a Simple Binary Tree with lazy allocation as
+       a subclass of SimpleNTree with N=2
+    """
+    def __init__(self, init=None):
+        super(self.__class__, self).__init__(2,init=init)
+        self.nthChild = self._nthChildBinary
+
+    def leftof(self):
+        """find (or create if needed) the left child"""
+        return self._nthChildBinary(0)
+
+    def rightof(self):
+        """find (or create if needed) the left child"""
+        return self._nthChildBinary(1)
+
+    def _nthChildBinary(self, n):
+        if n > self.N:
+            raise ValueError("Child n out of bounds")
+        if self._child[n] is None:
+            child = SimpleBTree()
+            child.parent = self
+            child._depth = self._depth + 1
+            child._ordinal = (2 * self._ordinal) + n
+            child._init = self._init
+            if child._init is not None:
+                child._init(child)
+            self._child[n] = child
+        return self._child[n]
+
+class SimpleBTreeOld (object):
     def __init__(self, parent=None, left=True, init=None):
         self.parent = parent
         if parent is None:
@@ -55,13 +156,13 @@ class SimpleBTree (object):
     def leftof(self):
         """find (or create if needed) the left child"""
         if self._left is None:
-            self._left = SimpleBTree(parent=self,left=True,init=self.init)
+            self._left = SimpleBTreeOld(parent=self,left=True,init=self.init)
         return self._left
 
     def rightof(self):
         """find (or create if needed) the left child"""
         if self._right is None:
-            self._right = SimpleBTree(parent=self,left=False,init=self.init)
+            self._right = SimpleBTreeOld(parent=self,left=False,init=self.init)
         return self._right
 
     def address(self):
@@ -74,7 +175,7 @@ class SimpleBTree (object):
            are 3,4 and node 2's children are 5,6 (and so on)
         """
         return (pow(2,self._depth) + self._ordinal) - 1
-    
+
     def findByAddress(self,depth,ordinal):
         """find node recursively"""
         if depth == 0:
@@ -97,7 +198,7 @@ class SimpleBTree (object):
 if __name__ == '__main__':
     # example initializer - extends nodes with nodeId() % 5
     def initNode(node):
-        print("initializing node ", str(node.nodeId()))
+        #print("initializing node ", str(node.nodeId()))
         node.mod5 = node.nodeId() % 5
     # create 
     rootNode = SimpleBTree(init=initNode)
@@ -108,8 +209,31 @@ if __name__ == '__main__':
         if levels > 0:
             down(node.leftof(), levels-1)
             down(node.rightof(), levels-1)
-    down(rootNode,8)
+    down(rootNode,3)
     nx912F = rootNode.findByAddress(16,0x912F)
     print("nx912F (%d) = %s" % (0x912F, str(nx912F)))
     print("nx912f.mod5 = ", str(nx912F.mod5))
     assert nx912F.mod5 == (0x921F % 5)
+    nrootNode = SimpleNTree(3,initNode)
+    def downN(node, levels):
+        print(str(node))
+        if levels > 0:
+            for n in range(0, node.N):
+                downN(node.nthChild(n), levels-1)
+    downN(nrootNode,3)
+    assert nrootNode.findByAddress(3,26).mod5 == 4
+    assert nrootNode.findByAddress(2,6).mod5 == 0
+    brootNode = SimpleNTree(2,init=initNode)
+    crootNode = SimpleBTreeOld(init=initNode)
+    def downNNN(anode, bnode, cnode, levels):
+        print(str(anode))
+        if levels > 0:
+            assert anode.mod5 == bnode.mod5
+            assert anode.address() == bnode.address()
+            assert anode.nodeId() == bnode.nodeId()
+            assert anode.mod5 == cnode.mod5
+            assert anode.address() == cnode.address()
+            assert anode.nodeId() == cnode.nodeId()
+            downNNN(anode.leftof(), bnode.nthChild(0), cnode.leftof(), levels-1)
+            downNNN(anode.rightof(),bnode.nthChild(1), cnode.rightof(),levels-1)
+    downNNN(rootNode,brootNode,crootNode,4)

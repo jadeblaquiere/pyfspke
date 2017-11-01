@@ -31,48 +31,174 @@ import rabinmiller as rabinmiller
 from pypbc import *
 from simplebtree import SimpleBTree
 from cwhash import CWHashFunction
+from binascii import hexlify, unhexlify
+import json
+
+"""fspke implements a cryptosystem based on the Canetti, Halevi and Katz
+   model as defined in "A Forward-Secure Public-Key Encryption Scheme",
+   published in Eurocrypt2003, archived (https://eprint.iacr.org/2003/083).
+   This asymmetric encryption model enables encryption of data based on a
+   static public key and a defined set of intervals. The private key has
+   the ability to evolve over time to "forget" the ability to decrypt
+   messages from previous intervals (forward security) such that messages
+   from previous intervals cannot be decrypted if the revised (pruned) public
+   key is divulged.
+
+   The Canetti-Halevi-Katz scheme uses symmetric pairings of Elliptic
+   Curves (ECs), G1 X G1 -> G2, where elements in G1 are EC points and
+   elements in G2 are polynomials in Fp2 (F-p-squared). Messages (M) are
+   in Fp2. Ciphertexts include multiple EC points and an element in Fp2.
+   The Public Key includes parameters of the curves, pairing and a universal
+   hash function.
+"""
+
+class CHKPublicKey (object):
+    def __init__(self, depth):
+        if (depth != int(depth)) or (depth < 0):
+            raise ValueError('Invalid Input: depth must be positive integer')
+        self.depth = depth
+        self.params = None
+        self.pairing = None
+        self.P = None
+        self.Q = None
+        self.cwH = None
+        self.H = self.hashFunc
+        self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
+        self.eQH = None
+
+    def publicKeyToJSON(self):
+        pubkey = {}
+        pubkey['params'] = str(self.params)
+        pubkey['P'] = str(self.P)
+        pubkey['Q'] = str(self.Q)
+        pubkey['l'] = self.depth
+        cwhf = {}
+        cwhf['q'] = self.cwH.q
+        cwhf['p'] = self.cwH.p
+        cwhf['a'] = self.cwH.a
+        cwhf['b'] = self.cwH.b
+        pubkey['H'] = cwhf
+        pubkeyJ = json.dumps(pubkey)
+        print('pubkey exported as:')
+        print(pubkeyJ)
+        print()
+        return pubkeyJ
+
+    @staticmethod
+    def publicKeyFromJSON(pubkeyJ):
+        pubkey = json.loads(pubkeyJ)
+        pke = CHKPublicKey(pubkey['l'])
+        pke._importPubkeyFromDict(pubkey)
+        return pke
+
+    def _importPubkeyFromDict(self, pubkey):
+        print('pubkey imported as:')
+        print(pubkey)
+        print()
+        self.params = Parameters(param_string=pubkey['params'])
+        self._validateParams()
+        self.pairing = Pairing(self.params)
+        self.P = Element(self.pairing, G1, value=pubkey['P'])
+        self.Q = Element(self.pairing, G1, value=pubkey['Q'])
+        cwhf = pubkey['H']
+        self.cwH = CWHashFunction(cwhf['q'], cwhf['p'],
+                                 cwhf['a'], cwhf['b'])
+        self.H = self.hashFunc
+        self.gt = self.pairing.apply(self.P, pke.Q)
+        self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
+        self.eQH = self.pairing.apply(self.Q, self.H(self.tree.nodeId()))
+
+    def _validateParams(self):
+        strparams = str(self.params).split()
+        # print(strparams.split())
+        self.q = int(strparams[3])
+        if rabinmiller.isPrime(self.q) != True:
+            raise ValueError("q must be prime")
+        self.h = int(strparams[5])
+        self.r = int(strparams[7])
+        if rabinmiller.isPrime(self.r) != True:
+            raise ValueError("p must be prime")
+        if (self.q + 1) != (self.h * self.r):
+            raise ValueError("h * r must equal p + 1")
+
+    @staticmethod
+    def _btree_init(node):
+        node.R = []
+        node.S = None
+
+    def hashFunc(self,x):
+        """hashFunc uses the Carter Wegman hash function to has to Zr and
+           then maps Zr -> Qp via scalar multiplication by generator P
+        """
+        return self.P * self.cwH.hashval(x)
+
+    def _hashlist(self, depth, ordinal):
+        node = self.tree.findByAddress(depth, ordinal)
+        if depth == 0:
+            return []
+        else:
+            phash = self._hashlist(depth-1, ordinal>>1)
+            shash = phash[:]
+            H = self.H(node.nodeId())
+            # print("hash for node %d = %s" % (node.nodeId(), str(H)))
+            shash.append(H)
+            return shash
+
+    def Enc(self, M, ordinal):
+        """Enc is the encryption function which takes a single element
+           and encrypts it using the encryption key for specific interva
+        """
+        # assume M in GT
+        # lambda is a reserved word, so lam means lambda
+        lam = Element.random(self.pairing, Zr)
+        hlist = self._hashlist(self.depth, ordinal)
+        C = []
+        C.append(self.P * lam)
+        for H in hlist:
+            # print("type,h = ", type(h), h)
+            # H = self.P * h
+            # print("type,H = ", type(H), H)
+            C.append(H * lam)
+        d = pow(self.eQH, lam)
+        # print("type,m = ", type(m), m)
+        # print("type,d = ", type(d), d)
+        C.append(M * d)
+        return C
 
 
-def _btree_init(node):
-    node.R = []
-    node.S = None
-
-
-class CHKForwardSecurePKE (object):
+class CHKPrivateKey (CHKPublicKey):
     def __init__(self,depth,qbits, rbits):
-        assert depth == int(depth)
-        assert depth > 0
-        assert qbits == int(qbits)
-        assert qbits > 0
-        assert rbits == int(rbits)
-        assert rbits > 0
-        # minimum cofactor(h) is 12... so at least that many bits
-        assert qbits > (rbits+4)
-        self._gen(depth,qbits,rbits)
+        if (qbits != int(qbits)) or (qbits < 0):
+            raise ValueError("Invalid Input: qbits must be positive integer")
+        if (rbits != int(rbits)) or (rbits < 0):
+            raise ValueError("Invalid Input: rbits must be positive integer")
+        if rbits > (qbits - 4):
+            raise ValueError("Invalid Input: rbits cannot be > qbits - 4")
+        super(self.__class__, self).__init__(depth)
+        self.Gen(depth,qbits,rbits)
 
-    def _gen(self,depth,qbits,rbits):
+    def Gen(self,depth,qbits,rbits):
         # parameters specify "type A" pairing (symmetric)
+        self.depth = depth
         self.params = Parameters(qbits=qbits, rbits=rbits, short=False)
         self.pairing = Pairing(self.params)
         self.P = Element.random(self.pairing, G1)
         alpha = Element.random(self.pairing, Zr)
         self.Q = self.P * alpha
         self.gt = self.pairing.apply(self.P, self.Q)
-        strparams = str(self.params).split()
-        # print(strparams.split())
-        self.q = int(strparams[3])
-        assert rabinmiller.isPrime(self.q)
-        self.h = int(strparams[5])
-        self.r = int(strparams[7])
-        assert rabinmiller.isPrime(self.r)
-        assert (self.q + 1) == (self.h * self.r)
-        self.H = CWHashFunction(self.q)
-        self.tree = SimpleBTree(init=_btree_init)
-        self.d_precalc = self.pairing.apply(self.Q, self.P * self.H.hashval(self.tree.nodeId()))
+        self._validateParams()
+        self.cwH = CWHashFunction(self.q)
+        self.H = self.hashFunc
+        self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
+        # precaclulate the pairing of Q, H
+        self.eQH = self.pairing.apply(self.Q, self.H(self.tree.nodeId()))
         R0 = []
         self.tree.R = R0
-        S0 = self.P * (alpha * self.H.hashval(self.tree.nodeId()))
+        S0 = self.H(self.tree.nodeId()) * alpha
         self.tree.S = (S0)
+
+    def Der(self, ordinal):
+        return self._der(self.depth, ordinal)
 
     def _der(self, depth, ordinal):
         node = self.tree.findByAddress(depth, ordinal)
@@ -95,49 +221,19 @@ class CHKForwardSecurePKE (object):
         # print("updating key for node %s" % (node.nodeId()))
         node.R = parentR[:]
         node.R.append(Rpw)
-        H = self.P * self.H.hashval(node.nodeId())
-        print("hash for node %d = %s" % (node.nodeId(), str(H)))
+        H = self.H(node.nodeId())
+        # print("hash for node %d = %s" % (node.nodeId(), str(H)))
         node.S = parentS + (H * pw)
         return (node.R, node.S)
 
-    def _hashlist(self, depth, ordinal):
-        node = self.tree.findByAddress(depth, ordinal)
-        if depth == 0:
-            return []
-        else:
-            phash = self._hashlist(depth-1, ordinal>>1)
-            shash = phash[:]
-            H = self.P * self.H.hashval(node.nodeId())
-            print("hash for node %d = %s" % (node.nodeId(), str(H)))
-            shash.append(H)
-            return shash
-
-    def _enc(self, M, depth, ordinal):
-        # assume M in GT
-        # lambda is a reserved word, so lam means lambda
-        lam = Element.random(self.pairing, Zr)
-        hlist = self._hashlist(depth, ordinal)
-        C = []
-        C.append(self.P * lam)
-        for H in hlist:
-            # print("type,h = ", type(h), h)
-            # H = self.P * h
-            # print("type,H = ", type(H), H)
-            C.append(H * lam)
-        d = pow(self.d_precalc, lam)
-        # print("type,m = ", type(m), m)
-        # print("type,d = ", type(d), d)
-        C.append(M * d)
-        return C
-
-    def _dec(self, C, depth, ordinal):
+    def Dec(self, C, ordinal):
         U0 = C[0]
         U = C[1:-1]
         V = C[-1]
         print("U0 = ", U0)
         print("Ui (i=1..t) = ", U)
         print("V = ", V)
-        SK = self._der(depth, ordinal)
+        SK = self.Der(ordinal)
         S = SK[1]
         R = SK[0]
         print("S = ", S)
@@ -151,15 +247,9 @@ class CHKForwardSecurePKE (object):
         d = us * pow(pi, self.r - 1)
         return V * pow(d, self.r - 1)
 
-    def _node_hash(self,node):
-        return self.H.hashval(self.tree.nodeId())
-
-    def der(self, interval):
-        # derive secret key for interval, return None if impossible
-        pass
-
 if __name__ == '__main__':
-    pke = CHKForwardSecurePKE(16, 256, 200)
+    set_point_format_compressed()
+    pke = CHKPrivateKey(16, 128, 100)
     print("params =", pke.params)
     print("q =", pke.q)
     print("h =", pke.h)
@@ -183,16 +273,25 @@ if __name__ == '__main__':
     print("SK22 = ", SK22)
     SK23 = pke._der(2,3)
     print("SK23 = ", SK23)
+    # export pubkey
+    pubkey = pke.publicKeyToJSON()
+    #pke2 = CHKPublicKey.publicKeyFromJSON(pubkey)
     # encrypt a message
-    m = random.randint(1,pke.r)
-    me = pke.gt * m
-    print("Random message = 0x%X" % (m))
-    print("Random element = ", str(me))
-    C = pke._enc(me,16,0x1234)
-    print("ciphertext = ", str(C))
-    d = pke._dec(C,16,0x1234)
-    print("decrypted = ", str(d))
-    print("m * gt = ", str(pke.gt * me))
+    for i in range(0,100):
+        m = random.randint(1,pke.r)
+        me = pke.gt * m
+        print("Random message = 0x%X" % (m))
+        print("Random element = ", str(me))
+        C = pke.Enc(me,0x1234)
+        #C2 = pke2.Enc(me,0x5678)
+        print("ciphertext 1 = ", str(C))
+        #print("ciphertext 2 = ", str(C2))
+        d = pke.Dec(C,0x1234)
+        #d2 = pke.Dec(C2,0x5678)
+        print("decrypted 1 = ", str(d))
+        #print("decrypted 2 = ", str(d2))
+        assert d == me
+        #assert d2 == me
     a = Element.random(pke.pairing, Zr)
     b = Element.random(pke.pairing, Zr)
     # pbc treats * and ** both as the group operation (scalar multiplication)
@@ -209,7 +308,6 @@ if __name__ == '__main__':
     bilin = pke.pairing.apply(g1a, g2b)
     bili2 = pke.pairing.apply(g1b, g2a)
     check = pow(pke.gt, (a*b))
-    assert pow(pke.gt, (a*b)) != pke.gt * (a * b)
     print("bilin = ", str(bilin))
     print("check = ", str(check))
     print("bili2 = ", str(bili2))
@@ -238,7 +336,5 @@ if __name__ == '__main__':
     gtfive = gtone * r5
     print("5 = ", str(r5))
     print("1(gt) * 5 = ", str(gtfive))
-    if False:
-        for i in range (0, pow(2,8)):
-            print("i,h(i) = %d, %X" % (i, pke.H.hashval(i)))
-            assert pke.H.hashval(i) < pke.q
+    gtfive = pow(gtone,r5)
+    print("1(gt) ** 5 = ", str(gtfive))
