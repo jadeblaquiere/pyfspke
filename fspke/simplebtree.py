@@ -27,12 +27,12 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 class SimpleNTree (object):
-    """SimpleNTree implements a Constant Width Tree with lazy allocation.
-    Nodes are created when first referenced. Supports arbitrary depth.
-    The init parameter provides a callback function which is called for
-    each allocated node to initialize local data at the node. In this way
-    SimpleNTree can be used to manage a tree of data without creating a
-    derived class.
+    """SimpleNTree implements an Order N B-Tree with lazy allocation where
+    all non-leaf nodes have exactly N children. Nodes are created when first
+    referenced. Supports arbitrary depth. The init parameter provides a
+    callback function which is called for each allocated node to initialize
+    local data at the node. In this way SimpleNTree can be used to manage a
+    tree of data without creating a derived class.
     
     Tree traversal is via virtual Method nthChild(n), which can be overridden
     by subclass.
