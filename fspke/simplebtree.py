@@ -86,7 +86,7 @@ class SimpleNTree (object):
         nInPrevRows = ((1 - pow(self.N, self._depth)) / (1 - self.N))
         # print (">>address %s, nPrevRows %d, ordinal %d" %
         #        (self.address(), nInPrevRows, self._ordinal))
-        return int(((1 - pow(self.N, self._depth)) / (1 - self.N)) + self._ordinal)
+        return int(((1 - pow(self.N, self._depth)) // (1 - self.N)) + self._ordinal)
 
     def findByAddress(self,depth,ordinal):
         """find node recursively"""
