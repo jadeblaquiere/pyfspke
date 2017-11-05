@@ -80,5 +80,3 @@ class CWHashFunction (object):
     def __str__(self):
         return ("(((" + str(self.a) + " * x + " + str(self.b) + ") % " + 
                 str(self.p) + ") % " + str(self.q) + ")")
-
-

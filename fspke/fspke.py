@@ -62,6 +62,7 @@ class CHKPublicKey (object):
         self.P = None
         self.Q = None
         self.cwH = None
+        self.C = None
         self.H = self.hashFunc
         self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
         self.eQH = None
@@ -77,7 +78,10 @@ class CHKPublicKey (object):
         cwhf['p'] = self.cwH.p
         cwhf['a'] = self.cwH.a
         cwhf['b'] = self.cwH.b
-        pubkey['H'] = cwhf
+        hashfunc = {}
+        hashfunc['C'] = str(self.C)
+        hashfunc['cwH'] = cwhf
+        pubkey['H'] = hashfunc
         pubkeyJ = json.dumps(pubkey)
         print('pubkey exported as:')
         print(pubkeyJ)
@@ -100,7 +104,9 @@ class CHKPublicKey (object):
         self.pairing = Pairing(self.params)
         self.P = Element(self.pairing, G1, value=pubkey['P'])
         self.Q = Element(self.pairing, G1, value=pubkey['Q'])
-        cwhf = pubkey['H']
+        hashfunc = pubkey['H']
+        self.C = Element(self.pairing, G1, value=hashfunc['C'])
+        cwhf = hashfunc['cwH']
         self.cwH = CWHashFunction(cwhf['q'], cwhf['p'],
                                  cwhf['a'], cwhf['b'])
         self.H = self.hashFunc
@@ -130,7 +136,7 @@ class CHKPublicKey (object):
         """hashFunc uses the Carter Wegman hash function to has to Zr and
            then maps Zr -> Qp via scalar multiplication by generator P
         """
-        return self.P * self.cwH.hashval(x)
+        return self.C * self.cwH.hashval(x)
 
     def _hashlist(self, depth, ordinal):
         node = self.tree.findByAddress(depth, ordinal)
@@ -144,26 +150,27 @@ class CHKPublicKey (object):
             shash.append(H)
             return shash
 
-    def Enc(self, M, ordinal):
+    def Enc(self, M, ordinal, lam=None):
         """Enc is the encryption function which takes a single element
            and encrypts it using the encryption key for specific interva
         """
         # assume M in GT
-        # lambda is a reserved word, so lam means lambda
-        lam = Element.random(self.pairing, Zr)
+        # lambda is a python reserved word, so lam means lambda
+        if lam is None:
+            lam = Element.random(self.pairing, Zr)
         hlist = self._hashlist(self.depth, ordinal)
-        C = []
-        C.append(self.P * lam)
+        Ct = []
+        Ct.append(str(self.P * lam))
         for H in hlist:
             # print("type,h = ", type(h), h)
             # H = self.P * h
             # print("type,H = ", type(H), H)
-            C.append(H * lam)
+            Ct.append(str(H * lam))
         d = pow(self.eQH, lam)
         # print("type,m = ", type(m), m)
         # print("type,d = ", type(d), d)
-        C.append(M * d)
-        return C
+        Ct.append(str(M * d))
+        return Ct
 
 
 class CHKPrivateKey (CHKPublicKey):
@@ -188,6 +195,7 @@ class CHKPrivateKey (CHKPublicKey):
         self.gt = self.pairing.apply(self.P, self.Q)
         self._validateParams()
         self.cwH = CWHashFunction(self.q)
+        self.C = Element.random(self.pairing, G1)
         self.H = self.hashFunc
         self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
         # precaclulate the pairing of Q, H
@@ -226,18 +234,25 @@ class CHKPrivateKey (CHKPublicKey):
         node.S = parentS + (H * pw)
         return (node.R, node.S)
 
-    def Dec(self, C, ordinal):
+    def Dec(self, Ctin, ordinal):
+        # importing the ciphertext as strings handles case
+        # of strings or where points are coming from distinct
+        # pairing object (e.g. test code with multiple pkes)
+        C = []
+        for Ct in Ctin[0:-1]:
+            C.append(Element(self.pairing, G1, value=str(Ct)))
+        C.append(Element(self.pairing, GT, value=str(Ctin[-1])))
         U0 = C[0]
         U = C[1:-1]
         V = C[-1]
-        print("U0 = ", U0)
-        print("Ui (i=1..t) = ", U)
-        print("V = ", V)
+        # print("U0 = ", U0)
+        # print("Ui (i=1..t) = ", U)
+        # print("V = ", V)
         SK = self.Der(ordinal)
         S = SK[1]
         R = SK[0]
-        print("S = ", S)
-        print("Ri = ", R)
+        # print("S = ", S)
+        # print("Ri = ", R)
         assert len(R) == len(U)
         pi = self.pairing.apply(R[0], U[0])
         for i in range(1,len(R)):
@@ -248,8 +263,8 @@ class CHKPrivateKey (CHKPublicKey):
         return V * pow(d, self.r - 1)
 
 if __name__ == '__main__':
-    set_point_format_compressed()
-    pke = CHKPrivateKey(16, 128, 100)
+    set_point_format_uncompressed()
+    pke = CHKPrivateKey(16, 9, 5)
     print("params =", pke.params)
     print("q =", pke.q)
     print("h =", pke.h)
@@ -273,25 +288,37 @@ if __name__ == '__main__':
     print("SK22 = ", SK22)
     SK23 = pke._der(2,3)
     print("SK23 = ", SK23)
-    # export pubkey
+    # export/import pubkey
     pubkey = pke.publicKeyToJSON()
-    #pke2 = CHKPublicKey.publicKeyFromJSON(pubkey)
+    pke2 = CHKPublicKey.publicKeyFromJSON(pubkey)
     # encrypt a message
-    for i in range(0,100):
+    for i in range(0,10):
         m = random.randint(1,pke.r)
         me = pke.gt * m
         print("Random message = 0x%X" % (m))
         print("Random element = ", str(me))
-        C = pke.Enc(me,0x1234)
-        #C2 = pke2.Enc(me,0x5678)
+        lam = Element.random(pke.pairing, Zr)
+        C = pke2.Enc(me,0x1234,lam)
+        C2 = pke2.Enc(me,0x5678,lam)
+        C1 = pke.Enc(me,0x1234,lam)
+        C3 = pke.Enc(me,0x5678,lam)
         print("ciphertext 1 = ", str(C))
-        #print("ciphertext 2 = ", str(C2))
-        d = pke.Dec(C,0x1234)
-        #d2 = pke.Dec(C2,0x5678)
-        print("decrypted 1 = ", str(d))
-        #print("decrypted 2 = ", str(d2))
-        assert d == me
-        #assert d2 == me
+        print("ciphertext 2 = ", str(C2))
+        assert str(C) == str(C1)
+        assert str(C2) == str(C3)
+        if True:
+            d = pke.Dec(C,0x1234)
+            dn = pke.Dec(C,0x5678)
+            d2 = pke.Dec(C3,0x5678)
+            d2n = pke.Dec(C3,0x1234)
+            print("decrypted 1 = ", str(d))
+            print("decrypted 2 = ", str(d2))
+            print("decrypted 1n = ", str(dn))
+            print("decrypted 2n = ", str(d2n))
+            assert d == me
+            assert dn != me
+            assert d2 == me
+            assert d2n != me
     a = Element.random(pke.pairing, Zr)
     b = Element.random(pke.pairing, Zr)
     # pbc treats * and ** both as the group operation (scalar multiplication)
@@ -333,8 +360,8 @@ if __name__ == '__main__':
     gtone = pke.gt * gtm1
     print("gt * gti =", str(gtone))
     r5 = Element(pke.pairing, Zr, value=5)
-    gtfive = gtone * r5
+    gtfive = pow(pke.gt,r5)
     print("5 = ", str(r5))
-    print("1(gt) * 5 = ", str(gtfive))
-    gtfive = pow(gtone,r5)
-    print("1(gt) ** 5 = ", str(gtfive))
+    print("gt ** 5 = ", str(gtfive))
+    gtfiveinv = gtfive * gtm1
+    print("(gt * 5) * gt ** -1 = ", str(gtfiveinv))
