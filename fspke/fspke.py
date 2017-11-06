@@ -30,7 +30,8 @@ from Crypto.Random import random
 import rabinmiller as rabinmiller
 from pypbc import *
 from simplebtree import SimpleBTree
-from cwhash import CWHashFunction
+#from cwhash import CWHashFunction
+from icarthash import IcartHash
 from binascii import hexlify, unhexlify
 import json
 
@@ -61,8 +62,9 @@ class CHKPublicKey (object):
         self.pairing = None
         self.P = None
         self.Q = None
-        self.cwH = None
-        self.C = None
+        #self.cwH = None
+        #self.C = None
+        self._H = None
         self.H = self.hashFunc
         self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
         self.eQH = None
@@ -73,15 +75,7 @@ class CHKPublicKey (object):
         pubkey['P'] = str(self.P)
         pubkey['Q'] = str(self.Q)
         pubkey['l'] = self.depth
-        cwhf = {}
-        cwhf['q'] = self.cwH.q
-        cwhf['p'] = self.cwH.p
-        cwhf['a'] = self.cwH.a
-        cwhf['b'] = self.cwH.b
-        hashfunc = {}
-        hashfunc['C'] = str(self.C)
-        hashfunc['cwH'] = cwhf
-        pubkey['H'] = hashfunc
+        pubkey['H'] = self._H.serialize()
         pubkeyJ = json.dumps(pubkey)
         print('pubkey exported as:')
         print(pubkeyJ)
@@ -104,11 +98,7 @@ class CHKPublicKey (object):
         self.pairing = Pairing(self.params)
         self.P = Element(self.pairing, G1, value=pubkey['P'])
         self.Q = Element(self.pairing, G1, value=pubkey['Q'])
-        hashfunc = pubkey['H']
-        self.C = Element(self.pairing, G1, value=hashfunc['C'])
-        cwhf = hashfunc['cwH']
-        self.cwH = CWHashFunction(cwhf['q'], cwhf['p'],
-                                 cwhf['a'], cwhf['b'])
+        self._H = IcartHash.deserialize(pubkey['H'])
         self.H = self.hashFunc
         self.gt = self.pairing.apply(self.P, pke.Q)
         self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
@@ -133,10 +123,13 @@ class CHKPublicKey (object):
         node.S = None
 
     def hashFunc(self,x):
-        """hashFunc uses the Carter Wegman hash function to has to Zr and
-           then maps Zr -> Qp via scalar multiplication by generator P
+        """hashfunc uses the Icart hash function and converts it to Element
         """
-        return self.C * self.cwH.hashval(x)
+        h = self._H.hashval(x)
+        if h[1] == True:
+            return Element.zero(self.pairing, G1)
+        else:
+            return Element(self.pairing, G1, value=h[0])
 
     def _hashlist(self, depth, ordinal):
         node = self.tree.findByAddress(depth, ordinal)
@@ -194,8 +187,12 @@ class CHKPrivateKey (CHKPublicKey):
         self.Q = self.P * alpha
         self.gt = self.pairing.apply(self.P, self.Q)
         self._validateParams()
-        self.cwH = CWHashFunction(self.q)
-        self.C = Element.random(self.pairing, G1)
+        # self.cwH = CWHashFunction(self.q)
+        set_point_format_uncompressed()
+        Pstr = str(self.P)[2:]
+        G = (int(Pstr[:len(Pstr)//2], 16), int(Pstr[len(Pstr)//2:], 16))
+        print("Generator = ", G)
+        self._H = IcartHash(self.q, 1, 0, G, self.r)
         self.H = self.hashFunc
         self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
         # precaclulate the pairing of Q, H
@@ -264,7 +261,7 @@ class CHKPrivateKey (CHKPublicKey):
 
 if __name__ == '__main__':
     set_point_format_uncompressed()
-    pke = CHKPrivateKey(16, 9, 5)
+    pke = CHKPrivateKey(16, 256, 200)
     print("params =", pke.params)
     print("q =", pke.q)
     print("h =", pke.h)

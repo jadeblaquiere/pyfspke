@@ -79,6 +79,7 @@ class IcartHash (object):
               "a" : self.a,
               "b" : self.b,
               "G" : (G[0], G[1])}
+        print("curve =", self.curve)
         self.G = Generator.init(G[0], G[1], curve=self.curve)
         # precalculate some constants (inverses of 3, 2, 27) in Fq
         self._3inv = pow(3, self.q - 2, self.q)
@@ -95,6 +96,25 @@ class IcartHash (object):
         # the Carter and Wegman construction
         self.H1 = CWHashFunction(self.q)
         self.H2 = CWHashFunction(self.q)
+        
+    def serialize(self):
+        config = {}
+        config['q'] = self.q
+        config['a'] = self.a
+        config['b'] = self.b
+        config['G'] = (self.G.affine()[0], self.G.affine()[1])
+        config['n'] = self.curve['n']
+        config['H1'] = self.H1.serialize()
+        config['H2'] = self.H2.serialize()
+        return config
+
+    @staticmethod
+    def deserialize(config):
+        H = IcartHash(config['q'], config['a'], config['b'],
+                      config['G'], config['n'])
+        H.H1 = CWHashFunction.deserialize(config['H1'])
+        H.H2 = CWHashFunction.deserialize(config['H2'])
+        return H
 
     def _cubeRoot(self, x):
         return pow(x, self._cubeRtExp, self.q)
@@ -105,8 +125,9 @@ class IcartHash (object):
         (point at infinity). Points are calculated in affine coordinates and
         returned as a Point Object.
         
-        Note: deterministicMap reliably maps Fp to E(Fp), but the results are
-        not uniform
+        Note: deterministicMap reliably maps Fp to E(Fp), but as not all points
+        on the curve can be parameterized, the results are not uniform and the
+        distribution is differentiable from a collection of random points
         """
         if (n != int(n)) or (n < 0):
             raise ValueError("Invalid Input")
@@ -144,7 +165,7 @@ class IcartHash (object):
         if (n != int(n)) or (n < 0):
             raise ValueError("Invalid Input")
         if n == 0:
-            return (0, 0, True)
+            return Point(infinity=True,curve=self.curve)
         # just to be sure, force x to be a member 
         u = int(n) % self.q
         return (self.G * u)
@@ -155,9 +176,16 @@ class IcartHash (object):
         and the summing the results of mapping these values using the
         deterministic (Icart) map and the uniform (E.C. Point Multiplication)
         mappings. 
+        
+        hashval takes an integer as input and returns the compressed
+        representation of the point as a string.
         """
-        return (self.deterministicMap(self.H1.hashval(n)) +
-                self.uniformMap(self.H2.hashval(n)))
+        h = (self.deterministicMap(self.H1.hashval(n)) +
+             self.uniformMap(self.H2.hashval(n)))
+        if h.is_infinite:
+            return ('0' * (2 + ((self.curve['bits'] + 7) // 8)), True)
+        else:
+            return (h.compress().decode(), False)
 
 if __name__ == '__main__':
     import ecpy.curves as curves
@@ -208,14 +236,30 @@ if __name__ == '__main__':
 
     iH = IcartHash(q, a, b, curve['G'], curve['n'])
     h0 = iH.hashval(0)
+    iH2 = IcartHash.deserializeFromConfig(iH.serializeConfig())
     print("iH(0) = ", h0)
     for i in range(0, q):
         # n = random.randint(0,q-1)
         n = i
         hn = iH.hashval(n)
-        ha = hn.affine()
-        han = (ha[0], ha[1], hn.is_infinite)
-        print("n, iH(n) = ", n, han)
+        assert hn == iH2.hashval(n)
+        ncollisions = 0
+        coll = []
+        for j in range(0, q):
+            hc = iH.hashval(j)
+            if (i != j) and (hc == hn):
+                ncollisions += 1
+                # print("collision i, j, hash = ", i, j, hc)
+                coll.append(j)
+        hp = Point(infinity=True, curve=curve)
+        if hn[1] == False:
+            hp = Point.decompress(hn[0])
+        ha = hp.affine()
+        han = (ha[0], ha[1], hp.is_infinite)
+        if ncollisions > 0:
+            print("n, iH(n) = ", n, han, ":", ncollisions, "collisions", coll)
+        else:
+            print("n, iH(n) = ", n, han)
         x,y = han[0], han[1]
         R = Point(x, y, infinity=han[2])
         assert R.is_valid()

@@ -73,7 +73,20 @@ class CWHashFunction (object):
                     raise ValueError("Invalid Input")
                 self.b = b
             break
-    
+
+    def serialize(self):
+        config = {}
+        config['q'] = self.q
+        config['p'] = self.p
+        config['a'] = self.a
+        config['b'] = self.b
+        return config
+
+    @staticmethod
+    def deserialize(config):
+        return CWHashFunction(config['q'], config['p'],
+                              config['a'], config['b'])
+
     def hashval(self, x):
         return (((self.a * x) + self.b) % self.p) % self.q
 
