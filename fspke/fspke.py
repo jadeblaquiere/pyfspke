@@ -65,7 +65,7 @@ class CHKPublicKey (object):
         #self.cwH = None
         #self.C = None
         self._H = None
-        self.H = self.hashFunc
+        self.H = self._hashFunc
         self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
         self.eQH = None
 
@@ -99,7 +99,7 @@ class CHKPublicKey (object):
         self.P = Element(self.pairing, G1, value=pubkey['P'])
         self.Q = Element(self.pairing, G1, value=pubkey['Q'])
         self._H = IcartHash.deserialize(pubkey['H'])
-        self.H = self.hashFunc
+        self.H = self._hashFunc
         self.gt = self.pairing.apply(self.P, pke.Q)
         self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
         self.eQH = self.pairing.apply(self.Q, self.H(self.tree.nodeId()))
@@ -122,7 +122,7 @@ class CHKPublicKey (object):
         node.R = []
         node.S = None
 
-    def hashFunc(self,x):
+    def _hashFunc(self,x):
         """hashfunc uses the Icart hash function and converts it to Element
         """
         h = self._H.hashval(x)
@@ -148,7 +148,7 @@ class CHKPublicKey (object):
            and encrypts it using the encryption key for specific interva
         """
         # assume M in GT
-        # lambda is a python reserved word, so lam means lambda
+        # lambda is a python reserved word, so here lam means lambda
         if lam is None:
             lam = Element.random(self.pairing, Zr)
         hlist = self._hashlist(self.depth, ordinal)
@@ -193,7 +193,7 @@ class CHKPrivateKey (CHKPublicKey):
         G = (int(Pstr[:len(Pstr)//2], 16), int(Pstr[len(Pstr)//2:], 16))
         print("Generator = ", G)
         self._H = IcartHash(self.q, 1, 0, G, self.r)
-        self.H = self.hashFunc
+        self.H = self._hashFunc
         self.tree = SimpleBTree(init=CHKPublicKey._btree_init)
         # precaclulate the pairing of Q, H
         self.eQH = self.pairing.apply(self.Q, self.H(self.tree.nodeId()))
