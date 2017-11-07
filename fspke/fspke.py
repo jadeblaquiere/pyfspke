@@ -272,7 +272,10 @@ class CHKPrivateKey (CHKPublicKey):
 
     def ExportKeyset(self, interval):
         node = self.tree.findByAddress(self.depth, interval)
-        return self._deriveRightAndUpRight(node)
+        keylist = self._deriveRightAndUpRight(node)
+        ckey = self._der(node.address()[0], node.address()[1])
+        keylist.append((node.address(), ckey))
+        return keylist
 
     def ForgetBefore(self, interval):
         self._forgetBefore(interval)
@@ -299,7 +302,7 @@ class CHKPrivateKey (CHKPublicKey):
         # loop over peers, find Id>node.Id, Der and add to list
         for c in node.parent.children()[:]:
             if c.nodeId() > node.nodeId():
-                ckey = self.Der(c.address()[1])
+                ckey = self._der(c.address()[0], c.address()[1])
                 keylist.append((c.address(), ckey))
         return keylist
 
