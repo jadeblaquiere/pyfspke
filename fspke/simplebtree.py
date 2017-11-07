@@ -43,7 +43,7 @@ class SimpleNTree (object):
         if (N != int(N)) or (N < 1):
             raise ValueError("N must be positive integer")
         self._depth = 0
-        self.N = N
+        self._N = N
         self._ordinal = 0
         self._child = [None] * N
         self.nthChild = self._nthChild
@@ -55,18 +55,25 @@ class SimpleNTree (object):
     def _nthChild(self, n):
         """_nthChild is intended to be called as nthChild (no underbar)
            allowing this particular routine to be overridden by subclass"""
-        if n > self.N:
+        if n > self._N:
             raise ValueError("Child n out of bounds")
         if self._child[n] is None:
-            child = SimpleNTree(self.N)
+            child = SimpleNTree(self._N)
             child.parent = self
             child._depth = self._depth + 1
-            child._ordinal = (self.N * self._ordinal) + n
+            child._ordinal = (self._N * self._ordinal) + n
             child._init = self._init
             if child._init is not None:
                 child._init(child)
             self._child[n] = child
         return self._child[n]
+
+    def children(self):
+        children = []
+        for n in range(0, self._N):
+            c = self.nthChild(n)
+            children.append(c)
+        return children
 
     def address(self):
         """address returns position in tree as a tuple (depth, width)"""
@@ -83,10 +90,10 @@ class SimpleNTree (object):
         # SUM:k=0 to n-1(an**k) = (1 - n**k) / (1 - n)
         if self.parent is None:
             return 0
-        nInPrevRows = ((1 - pow(self.N, self._depth)) / (1 - self.N))
+        nInPrevRows = ((1 - pow(self._N, self._depth)) // (1 - self._N))
         # print (">>address %s, nPrevRows %d, ordinal %d" %
         #        (self.address(), nInPrevRows, self._ordinal))
-        return int(((1 - pow(self.N, self._depth)) // (1 - self.N)) + self._ordinal)
+        return int(((1 - pow(self._N, self._depth)) // (1 - self._N)) + self._ordinal)
 
     def findByAddress(self,depth,ordinal):
         """find node recursively"""
@@ -94,12 +101,15 @@ class SimpleNTree (object):
             # print("seeking %X, found %X" % (ordinal, self._ordinal))
             assert ordinal == self._ordinal
             return self
-        path = (ordinal // (pow(self.N, depth-1))) % self.N
+        path = (ordinal // (pow(self._N, depth-1))) % self._N
         return self.nthChild(path).findByAddress(depth-1, ordinal)
+
+    def pruneChildren(self):
+        self._child = [None] * self._N
 
     def __str__(self):
         strval = "Node id %d @%s:" % (self.nodeId(), str(self.address()))
-        for n in range(0,self.N):
+        for n in range(0,self._N):
             strval += " child[%d] = id %d," % (n, self.nthChild(n).nodeId())
         return strval[:-1]
 
@@ -121,7 +131,7 @@ class SimpleBTree (SimpleNTree):
         return self._nthChildBinary(1)
 
     def _nthChildBinary(self, n):
-        if n > self.N:
+        if n > self._N:
             raise ValueError("Child n out of bounds")
         if self._child[n] is None:
             child = SimpleBTree()
@@ -213,13 +223,17 @@ if __name__ == '__main__':
     nx912F = rootNode.findByAddress(16,0x912F)
     print("nx912F (%d) = %s" % (0x912F, str(nx912F)))
     print("nx912f.mod5 = ", str(nx912F.mod5))
+    print("parent of nx912F = ", str(nx912F.parent))
+    print("children of parent of nx912F:")
+    for c in nx912F.parent.children():
+        print("    ", str(c))
     assert nx912F.mod5 == (0x921F % 5)
     nrootNode = SimpleNTree(3,initNode)
     def downN(node, levels):
         print(str(node))
         if levels > 0:
-            for n in range(0, node.N):
-                downN(node.nthChild(n), levels-1)
+            for c in node.children():
+                downN(c, levels-1)
     downN(nrootNode,3)
     assert nrootNode.findByAddress(3,26).mod5 == 4
     assert nrootNode.findByAddress(2,6).mod5 == 0
