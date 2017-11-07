@@ -30,7 +30,6 @@ from Crypto.Random import random
 import rabinmiller as rabinmiller
 from pypbc import *
 from simplebtree import SimpleNTree
-#from cwhash import CWHashFunction
 from icarthash import IcartHash
 from binascii import hexlify, unhexlify
 import json

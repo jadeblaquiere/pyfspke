@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from Crypto.Random import random
-import rabinmiller as rabinmiller
+import fspke.rabinmiller as rabinmiller
 
 class CWHashFunction (object):
     """Carter and Wegman Universal Hash Function Family implementation
