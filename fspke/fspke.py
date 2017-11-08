@@ -101,9 +101,6 @@ class CHKPublicKey (object):
         pubkey['o'] = self.order
         pubkey['H'] = self._H.serialize()
         pubkeyJ = json.dumps(pubkey)
-        print('pubkey exported as:')
-        print(pubkeyJ)
-        print()
         return pubkeyJ
 
     @staticmethod
@@ -114,9 +111,6 @@ class CHKPublicKey (object):
         return pke
 
     def _importPubkeyFromDict(self, pubkey):
-        print('pubkey imported as:')
-        print(pubkey)
-        print()
         params = pubkey['params']
         self.q = params['q']
         self.h = params['h']
@@ -136,6 +130,231 @@ class CHKPublicKey (object):
         self.gt = self.pairing.apply(self.P, self.Q)
         self.tree = SimpleNTree(self.order, init=CHKPublicKey._btree_init)
         self.eQH = self.pairing.apply(self.Q, self.H(self.tree.nodeId()))
+
+    def publicKeyToDER(self):
+        encoder = asn1.Encoder()
+        encoder.start()
+        # enter all
+        encoder.enter(asn1.Numbers.Sequence)
+        # curve/pairing parameters
+        encoder.enter(asn1.Numbers.Sequence)
+        encoder.write(self.q, asn1.Numbers.Integer)
+        encoder.write(self.h, asn1.Numbers.Integer)
+        encoder.write(self.r, asn1.Numbers.Integer)
+        encoder.write(self.exp2, asn1.Numbers.Integer)
+        encoder.write(self.exp1, asn1.Numbers.Integer)
+        encoder.write(self.sign1, asn1.Numbers.Integer)
+        encoder.write(self.sign0, asn1.Numbers.Integer)
+        encoder.leave()
+        # base points
+        encoder.write(unhexlify(str(self.P)), asn1.Numbers.OctetString)
+        encoder.write(unhexlify(str(self.Q)), asn1.Numbers.OctetString)
+        # btree dimensions
+        encoder.write(self.depth, asn1.Numbers.Integer)
+        encoder.write(self.order, asn1.Numbers.Integer)
+        # hash function
+        encoder.enter(asn1.Numbers.Sequence)
+        hashconfig = self._H.serialize()
+        # no need to write the same value multiple times
+        assert hashconfig['q'] == self.q
+        # encoder.write(hashconfig['q'], asn1.Numbers.Integer)
+        # no need to write a, b curve parameters as this implementation
+        # uses PBC's "type a" curve with a=1, b=0, n = order from pairing (r)
+        assert hashconfig['a'] == 1
+        assert hashconfig['b'] == 0
+        # encoder.write(hashconfig['a'], asn1.Numbers.Integer)
+        # encoder.write(hashconfig['b'], asn1.Numbers.Integer)
+        assert hashconfig['n'] == self.r
+        # encoder.write(hashconfig['n'], asn1.Numbers.Integer)
+        # hash function - generator Point
+        encoder.enter(asn1.Numbers.Sequence)
+        encoder.write(hashconfig['G'][0], asn1.Numbers.Integer)
+        encoder.write(hashconfig['G'][1], asn1.Numbers.Integer)
+        encoder.leave()
+        # hash function - CW Hash 1
+        encoder.enter(asn1.Numbers.Sequence)
+        cwhconfig = hashconfig['H1']
+        assert cwhconfig['q'] == self.q
+        # no need to write the same value multiple times
+        # encoder.write(cwhconfig['q'], asn1.Numbers.Integer)
+        encoder.write(cwhconfig['p'], asn1.Numbers.Integer)
+        encoder.write(cwhconfig['a'], asn1.Numbers.Integer)
+        encoder.write(cwhconfig['b'], asn1.Numbers.Integer)
+        encoder.leave()
+        # hash function - CW Hash 2
+        encoder.enter(asn1.Numbers.Sequence)
+        cwhconfig = hashconfig['H2']
+        assert cwhconfig['q'] == self.q
+        # no need to write the same value multiple times
+        # encoder.write(cwhconfig['q'], asn1.Numbers.Integer)
+        encoder.write(cwhconfig['p'], asn1.Numbers.Integer)
+        encoder.write(cwhconfig['a'], asn1.Numbers.Integer)
+        encoder.write(cwhconfig['b'], asn1.Numbers.Integer)
+        encoder.leave()
+        # leave hash config
+        encoder.leave()
+        # leave all
+        encoder.leave()
+        return encoder.output()
+
+    @staticmethod
+    def publicKeyFromDER(pubkeyD):
+        pubkey = {}
+        decoder = asn1.Decoder()
+        decoder.start(pubkeyD)
+        # enter all
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Sequence:
+            raise ValueError("Unexpected DER tag")
+        decoder.enter()
+        # curve/pairing parameters
+        params = {}
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Sequence:
+            raise ValueError("Unexpected DER tag")
+        decoder.enter()
+        # q
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, params['q'] = decoder.read()
+        # h
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, params['h'] = decoder.read()
+        # r
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, params['r'] = decoder.read()
+        # exp2
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, params['exp2'] = decoder.read()
+        # exp1
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, params['exp1'] = decoder.read()
+        # sign1
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, params['sign1'] = decoder.read()
+        # sign0
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, params['sign0'] = decoder.read()
+        decoder.leave()
+        pubkey['params'] = params
+        # P point
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.OctetString:
+            raise ValueError("Unexpected DER tag")
+        tag, P = decoder.read()
+        pubkey['P'] = hexlify(P).decode()
+        # Q point
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.OctetString:
+            raise ValueError("Unexpected DER tag")
+        tag, Q = decoder.read()
+        pubkey['Q'] = hexlify(Q).decode()
+        # depth
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, pubkey['l'] = decoder.read()
+        # order
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, pubkey['o'] = decoder.read()
+        # enter hash
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Sequence:
+            raise ValueError("Unexpected DER tag")
+        decoder.enter()
+        hashconfig = {}
+        hashconfig['q'] = params['q']
+        hashconfig['a'] = 1
+        hashconfig['b'] = 0
+        hashconfig['n'] = params['r']
+        # hash G point - same point as P, but different format
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Sequence:
+            raise ValueError("Unexpected DER tag")
+        decoder.enter()
+        # G[0]
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, G0 = decoder.read()
+        # G[1]
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, G1 = decoder.read()
+        hashconfig['G'] = (G0, G1)
+        decoder.leave()
+        # H1
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Sequence:
+            raise ValueError("Unexpected DER tag")
+        decoder.enter()
+        # p
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, p = decoder.read()
+        # a
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, a = decoder.read()
+        # b
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, b = decoder.read()
+        hashconfig['H1'] = {'q' : params['q'],
+                            'p' : p,
+                            'a' : a,
+                            'b' : b}
+        decoder.leave()
+        # H2
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Sequence:
+            raise ValueError("Unexpected DER tag")
+        decoder.enter()
+        # p
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, p = decoder.read()
+        # a
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, a = decoder.read()
+        # b
+        tag = decoder.peek()
+        if tag.nr != asn1.Numbers.Integer:
+            raise ValueError("Unexpected DER tag")
+        tag, b = decoder.read()
+        hashconfig['H2'] = {'q' : params['q'],
+                            'p' : p,
+                            'a' : a,
+                            'b' : b}
+        decoder.leave()
+        pubkey['H'] = hashconfig
+        decoder.leave()
+        decoder.leave()
+        pke = CHKPublicKey(pubkey['l'], pubkey['o'])
+        pke._importPubkeyFromDict(pubkey)
+        return pke
 
     def _validateParams(self):
         strparams = str(self.params).split()
@@ -164,6 +383,9 @@ class CHKPublicKey (object):
         # self._reconstructParams()
 
     def _reconstructParams(self):
+        """_reconstructParams composes a params string from the individual
+        parameter values in the format which can be parsed by PBC
+        """
         params = 'type a\nq ' + str(self.q) + '\nh ' + str(self.h)
         params += "\nr " + str(self.r) + "\nexp2 " + str(self.exp2)
         params += "\nexp1 " + str(self.exp1) + "\nsign1 " + str(self.sign1)
@@ -187,7 +409,8 @@ class CHKPublicKey (object):
         return unhexlify(self._hexprint_q(x))
 
     def _hashFunc(self, x):
-        """_hashfunc uses the Icart hash function and converts it to Element
+        """_hashfunc uses the Icart hash function and converts it to PBC
+        Element Type
         """
         h = self._H.hashval(x)
         if h[1] == True:

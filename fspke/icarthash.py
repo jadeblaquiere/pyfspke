@@ -64,6 +64,8 @@ class IcartHash (object):
             raise ValueError("Invalid Input: q must be prime")
         if (q % 3) != 2:
             raise ValueError("Invalid Input: q must be congruent to 2 (mod 3)")
+        if (len(G) != 2):
+            raise ValueError("Invalid Input : G should be a tuple (dimension 2)")
         if (G[0] != int(G[0])) or (G[0] < 0):
             raise ValueError("Invalid Input")
         if (G[1] != int(G[1])) or (G[1] < 0):
