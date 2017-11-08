@@ -34,7 +34,7 @@ from fspke.icarthash import IcartHash
 
 if __name__ == '__main__':
     set_point_format_compressed()
-    pke = CHKPrivateKey(256, 200, 6, order=16)
+    pke = CHKPrivateKey(512, 400, 6, order=16)
     print("params =", pke.params)
     print("q =", pke.q)
     print("q bitsize =", pke.q.bit_length())

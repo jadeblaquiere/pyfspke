@@ -75,6 +75,13 @@ class CHKPublicKey (object):
         self.H = self._hashFunc
         self.tree = SimpleNTree(self.order, init=CHKPublicKey._btree_init)
         self.eQH = None
+        self.q = None
+        self.r = None
+        self.h = None
+        self.exp2 = None
+        self.exp1 = None
+        self.sign1 = None
+        self.sign0 = None
 
     def publicKeyToJSON(self):
         pubkey = {}
@@ -124,6 +131,27 @@ class CHKPublicKey (object):
             raise ValueError("p must be prime")
         if (self.q + 1) != (self.h * self.r):
             raise ValueError("h * r must equal p + 1")
+        self.exp2 = int(strparams[9])
+        if self.exp2 <= 0:
+            raise ValueError("exp2 must be > 0")
+        self.exp1 = int(strparams[11])
+        if self.exp1 <= 0:
+            raise ValueError("exp1 must be > 0")
+        self.sign1 = int(strparams[13])
+        if (self.sign1 != 1) and (self.sign1 != -1):
+            raise ValueError("sign1 must be +/- 1")
+        self.sign0 = int(strparams[15])
+        if (self.sign0 != 1) and (self.sign0 != -1):
+            raise ValueError("sign0 must be +/- 1")
+        self._reconstructParams()
+
+    def _reconstructParams(self):
+        params = 'type a\nq ' + str(self.q) + '\nh ' + str(self.h)
+        params += "\nr " + str(self.r) + "\nexp2 " + str(self.exp2)
+        params += "\nexp1 " + str(self.exp1) + "\nsign1 " + str(self.sign1)
+        params += "\nsign0 " + str(self.sign0) + "\n"
+        assert params == str(self.params)
+        return params
 
     @staticmethod
     def _btree_init(node):
