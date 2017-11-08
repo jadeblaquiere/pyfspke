@@ -36,6 +36,7 @@ if __name__ == '__main__':
     set_point_format_compressed()
     pke = CHKPrivateKey(512, 400, 6, order=16)
     print("params =", pke.params)
+    assert pke._reconstructParams() == str(pke.params)
     print("q =", pke.q)
     print("q bitsize =", pke.q.bit_length())
     print("h =", pke.h)
@@ -65,6 +66,8 @@ if __name__ == '__main__':
     pke2 = CHKPublicKey.publicKeyFromJSON(pubkey)
     SK123456 = pke.Der(0x123456)
     SK56789A = pke.Der(0x56789A)
+    SK9ABCDE = pke.Der(0x9ABCDE)
+    SKDEF123 = pke.Der(0xDEF123)
     print("key(0x123456) = ", str(SK123456))
     print("key(0x56789A) = ", str(SK56789A))
     # encrypt a message
@@ -98,60 +101,82 @@ if __name__ == '__main__':
             assert dn != me
             assert d2 == me
             assert d2n != me
+    keyset = pke.ExportKeyset(0x000000)
+    print("Max keys = ", len(keyset))
     print("forgetting before 0x200000")
     pke.ForgetBefore(0x200000)
     keyset = pke.ExportKeyset(0x200000)
-    for k in keyset:
-        print("key @ %s = %s" % (k[0], k[1]))
+    print("Keys @ 0x200000 = ", len(keyset))
+    # for k in keyset:
+    #     print("key @ %s = %s" % (k[0], k[1]))
     print("forgotten")
     SKx123456 = pke.Der(0x123456)
     SKx56789A = pke.Der(0x56789A)
+    SKx9ABCDE = pke.Der(0x9ABCDE)
+    SKxDEF123 = pke.Der(0xDEF123)
     assert SKx123456 is None
     assert SKx56789A == SK56789A
-    a = Element.random(pke.pairing, Zr)
-    b = Element.random(pke.pairing, Zr)
-    # pbc treats * and ** both as the group operation (scalar multiplication)
-    # for elliptic curve points
-    g1a = pke.P * a
-    g2b = pke.Q * b
-    g1aExp = pow(pke.P, a)
-    g2bExp = pow(pke.Q, b)
-    assert g1a == g1aExp
-    assert g2b == g2bExp
-    # the opposite bilinear mapping
-    g1b = pke.P * b
-    g2a = pke.Q * a
-    bilin = pke.pairing.apply(g1a, g2b)
-    bili2 = pke.pairing.apply(g1b, g2a)
-    check = pow(pke.gt, (a*b))
-    print("bilin = ", str(bilin))
-    print("check = ", str(check))
-    print("bili2 = ", str(bili2))
-    assert bilin == check
-    assert bilin == bili2
-    # test order, cofactor
-    rm1 = pke.r - 1 
-    rm1P = pow(pke.P,rm1)
-    rp1 = pke.r + 1 
-    rp1P = pow(pke.P,rp1)
-    z = pke.P + rm1P
-    print("P =", str(pke.P))
-    print("(r-1)P =", str(rm1P))
-    print("(r+1)P =", str(rp1P))
-    print("z =", str(z))
-    pcheck = pke.pairing.apply(rm1P, pke.Q)
-    print("e(P,q)      = ", str(pke.gt))
-    print("e((r-1)P,q) = ", str(pcheck))
-    print(" sum(above) = ", str(pcheck + pke.gt))
-    gtm1 = pow(pke.gt, rm1)
-    print("gt       =", str(pke.gt))
-    print("gt ** -1 =", str(gtm1))
-    gtone = pke.gt * gtm1
-    print("gt * gti =", str(gtone))
-    r5 = Element(pke.pairing, Zr, value=5)
-    gtfive = pow(pke.gt,r5)
-    print("5 = ", str(r5))
-    print("gt ** 5 = ", str(gtfive))
-    gtfiveinv = gtfive * gtm1
-    print("(gt * 5) * gt ** -1 = ", str(gtfiveinv))
-
+    assert SKx9ABCDE == SK9ABCDE
+    assert SKxDEF123 == SKDEF123
+    print("forgetting before 0x700000")
+    pke.ForgetBefore(0x700000)
+    keyset = pke.ExportKeyset(0x700000)
+    print("Keys @ 0x700000 = ", len(keyset))
+    # for k in keyset:
+    #     print("key @ %s = %s" % (k[0], k[1]))
+    print("forgotten")
+    SKx123456 = pke.Der(0x123456)
+    SKx56789A = pke.Der(0x56789A)
+    SKx9ABCDE = pke.Der(0x9ABCDE)
+    SKxDEF123 = pke.Der(0xDEF123)
+    assert SKx123456 is None
+    assert SKx56789A is None
+    assert SKx9ABCDE == SK9ABCDE
+    assert SKxDEF123 == SKDEF123
+    # Validation of groups, orders, EC, Pairing math
+    if False:
+        a = Element.random(pke.pairing, Zr)
+        b = Element.random(pke.pairing, Zr)
+        # pbc treats * and ** both as the group operation (scalar multiplication)
+        # for elliptic curve points
+        g1a = pke.P * a
+        g2b = pke.Q * b
+        g1aExp = pow(pke.P, a)
+        g2bExp = pow(pke.Q, b)
+        assert g1a == g1aExp
+        assert g2b == g2bExp
+        # the opposite bilinear mapping
+        g1b = pke.P * b
+        g2a = pke.Q * a
+        bilin = pke.pairing.apply(g1a, g2b)
+        bili2 = pke.pairing.apply(g1b, g2a)
+        check = pow(pke.gt, (a*b))
+        print("bilin = ", str(bilin))
+        #print("check = ", str(check))
+        #print("bili2 = ", str(bili2))
+        assert bilin == check
+        assert bilin == bili2
+        # test order, cofactor
+        rm1 = pke.r - 1 
+        rm1P = pow(pke.P,rm1)
+        rp1 = pke.r + 1 
+        rp1P = pow(pke.P,rp1)
+        z = pke.P + rm1P
+        zG1 = Element.zero(pke.pairing, G1)
+        print("     P =", str(pke.P))
+        print("(r-1)P =", str(rm1P))
+        print("(r+1)P =", str(rp1P))
+        print("     z =", str(z))
+        assert z == zG1
+        pcheck = pke.pairing.apply(rm1P, pke.Q)
+        zGT = Element.zero(pke.pairing, GT)
+        print("e(P,q)      = ", str(pke.gt))
+        print("e((r-1)P,q) = ", str(pcheck))
+        print(" sum(above) = ", str(pcheck + pke.gt))
+        assert zGT == (pcheck + pke.gt)
+        gtm1 = pow(pke.gt, rm1)
+        print("gt       =", str(pke.gt))
+        print("gt ** -1 =", str(gtm1))
+        gtone = pke.gt * gtm1
+        assert zGT == gtone
+        print("gt * gti =", str(gtone))

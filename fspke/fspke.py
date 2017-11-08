@@ -85,7 +85,16 @@ class CHKPublicKey (object):
 
     def publicKeyToJSON(self):
         pubkey = {}
-        pubkey['params'] = str(self.params)
+        params = {}
+        params['q'] = self.q
+        params['h'] = self.h
+        params['r'] = self.r
+        params['exp2'] = self.exp2
+        params['exp1'] = self.exp1
+        params['sign1'] = self.sign1
+        params['sign0'] = self.sign0
+        # pubkey['params'] = str(self.params)
+        pubkey['params'] = params
         pubkey['P'] = str(self.P)
         pubkey['Q'] = str(self.Q)
         pubkey['l'] = self.depth
@@ -108,7 +117,16 @@ class CHKPublicKey (object):
         print('pubkey imported as:')
         print(pubkey)
         print()
-        self.params = Parameters(param_string=pubkey['params'])
+        params = pubkey['params']
+        self.q = params['q']
+        self.h = params['h']
+        self.r = params['r']
+        self.exp2 = params['exp2']
+        self.exp1 = params['exp1']
+        self.sign1 = params['sign1']
+        self.sign0 = params['sign0']
+        self.params = Parameters(param_string=self._reconstructParams())
+        # self.params = Parameters(param_string=pubkey['params'])
         self._validateParams()
         self.pairing = Pairing(self.params)
         self.P = Element(self.pairing, G1, value=pubkey['P'])
@@ -143,14 +161,14 @@ class CHKPublicKey (object):
         self.sign0 = int(strparams[15])
         if (self.sign0 != 1) and (self.sign0 != -1):
             raise ValueError("sign0 must be +/- 1")
-        self._reconstructParams()
+        # self._reconstructParams()
 
     def _reconstructParams(self):
         params = 'type a\nq ' + str(self.q) + '\nh ' + str(self.h)
         params += "\nr " + str(self.r) + "\nexp2 " + str(self.exp2)
         params += "\nexp1 " + str(self.exp1) + "\nsign1 " + str(self.sign1)
         params += "\nsign0 " + str(self.sign0) + "\n"
-        assert params == str(self.params)
+        # assert params == str(self.params)
         return params
 
     @staticmethod
