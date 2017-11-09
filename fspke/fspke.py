@@ -35,10 +35,13 @@ from binascii import hexlify, unhexlify
 import json
 import asn1
 
+
 def ensure_tag(decoder, expected):
     tag = decoder.peek()
     if tag.nr != expected:
-        raise ValueError("Error in DER format, expected tag %d, got %d" % (expected, tag.nr))
+        raise ValueError("Error in DER format, expected tag %d, got %d" %
+                         (expected, tag.nr))
+
 
 """fspke implements a cryptosystem based on the Canetti, Halevi and Katz
    model as defined in "A Forward-Secure Public-Key Encryption Scheme",
@@ -56,13 +59,14 @@ def ensure_tag(decoder, expected):
    in Fp2. Ciphertexts include multiple EC points and an element in Fp2.
    The Public Key includes parameters of the curves, pairing and a universal
    hash function.
-   
+
    NOTE: This implementation forgoes the optimization (see Section 3.3) of
    using every node of the tree and instead only uses leaf nodes such that
    a constant ciphertext size is maintained. This optimization does not
    affect the security proofs provided by Canetti, Halevi and Katz and with
    larger btree orders the cost in storage is negligible.
 """
+
 
 class CHKPublicKey (object):
     def __init__(self, depth, order=2):
@@ -74,8 +78,8 @@ class CHKPublicKey (object):
         self.pairing = None
         self.P = None
         self.Q = None
-        #self.cwH = None
-        #self.C = None
+        # self.cwH = None
+        # self.C = None
         self._H = None
         self.H = self._hashFunc
         self.tree = SimpleNTree(self.order, init=CHKPublicKey._btree_init)
@@ -139,7 +143,11 @@ class CHKPublicKey (object):
     def publicKeyToDER(self):
         encoder = asn1.Encoder()
         encoder.start()
-        # enter all
+        self._publicKeyDEREncode(encoder)
+        return encoder.output()
+
+    def _publicKeyDEREncode(self, encoder):
+        # enter pubkey
         encoder.enter(asn1.Numbers.Sequence)
         # curve/pairing parameters
         encoder.enter(asn1.Numbers.Sequence)
@@ -198,19 +206,16 @@ class CHKPublicKey (object):
         encoder.leave()
         # leave hash config
         encoder.leave()
-        # leave all
+        # leave pubkey
         encoder.leave()
-        return encoder.output()
 
     @staticmethod
-    def publicKeyFromDER(pubkeyD):
+    def _parseDERToDict(decoder):
         pubkey = {}
-        decoder = asn1.Decoder()
-        decoder.start(pubkeyD)
-        # enter all
+        # enter pubkey
         ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
-        # curve/pairing parameters
+        # enter curve/pairing parameters
         params = {}
         ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
@@ -235,6 +240,7 @@ class CHKPublicKey (object):
         # sign0
         ensure_tag(decoder, asn1.Numbers.Integer)
         tag, params['sign0'] = decoder.read()
+        # leave params
         decoder.leave()
         pubkey['params'] = params
         # P point
@@ -251,8 +257,8 @@ class CHKPublicKey (object):
         # order
         ensure_tag(decoder, asn1.Numbers.Integer)
         tag, pubkey['o'] = decoder.read()
-        # enter hash
         ensure_tag(decoder, asn1.Numbers.Sequence)
+        # enter H func
         decoder.enter()
         hashconfig = {}
         hashconfig['q'] = params['q']
@@ -261,6 +267,7 @@ class CHKPublicKey (object):
         hashconfig['n'] = params['r']
         # hash G point - same point as P, but different format
         ensure_tag(decoder, asn1.Numbers.Sequence)
+        # enter Generator point
         decoder.enter()
         # G[0]
         ensure_tag(decoder, asn1.Numbers.Integer)
@@ -269,9 +276,11 @@ class CHKPublicKey (object):
         ensure_tag(decoder, asn1.Numbers.Integer)
         tag, G1 = decoder.read()
         hashconfig['G'] = (G0, G1)
+        # leave Generator
         decoder.leave()
         # H1
         ensure_tag(decoder, asn1.Numbers.Sequence)
+        # enter H1
         decoder.enter()
         # p
         ensure_tag(decoder, asn1.Numbers.Integer)
@@ -282,13 +291,15 @@ class CHKPublicKey (object):
         # b
         ensure_tag(decoder, asn1.Numbers.Integer)
         tag, b = decoder.read()
-        hashconfig['H1'] = {'q' : params['q'],
-                            'p' : p,
-                            'a' : a,
-                            'b' : b}
+        hashconfig['H1'] = {'q': params['q'],
+                            'p': p,
+                            'a': a,
+                            'b': b}
+        # leave H1
         decoder.leave()
         # H2
         ensure_tag(decoder, asn1.Numbers.Sequence)
+        # enter H2
         decoder.enter()
         # p
         ensure_tag(decoder, asn1.Numbers.Integer)
@@ -299,15 +310,25 @@ class CHKPublicKey (object):
         # b
         ensure_tag(decoder, asn1.Numbers.Integer)
         tag, b = decoder.read()
-        hashconfig['H2'] = {'q' : params['q'],
-                            'p' : p,
-                            'a' : a,
-                            'b' : b}
+        hashconfig['H2'] = {'q': params['q'],
+                            'p': p,
+                            'a': a,
+                            'b': b}
+        # leave H2
         decoder.leave()
         pubkey['H'] = hashconfig
+        # leave H function
         decoder.leave()
+        # leave pubkey
         decoder.leave()
-        if decoder.eof() != True:
+        return pubkey
+
+    @staticmethod
+    def publicKeyFromDER(pubkeyD):
+        decoder = asn1.Decoder()
+        decoder.start(pubkeyD)
+        pubkey = CHKPublicKey._parseDERToDict(decoder)
+        if decoder.eof() is not True:
             raise ValueError("DER Content beyond expected EOF")
         pke = CHKPublicKey(pubkey['l'], pubkey['o'])
         pke._importPubkeyFromDict(pubkey)
@@ -317,11 +338,11 @@ class CHKPublicKey (object):
         strparams = str(self.params).split()
         # print(strparams.split())
         self.q = int(strparams[3])
-        if rabinmiller.isPrime(self.q) != True:
+        if rabinmiller.isPrime(self.q) is not True:
             raise ValueError("q must be prime")
         self.h = int(strparams[5])
         self.r = int(strparams[7])
-        if rabinmiller.isPrime(self.r) != True:
+        if rabinmiller.isPrime(self.r) is not True:
             raise ValueError("p must be prime")
         if (self.q + 1) != (self.h * self.r):
             raise ValueError("h * r must equal p + 1")
@@ -362,7 +383,7 @@ class CHKPublicKey (object):
         pfmt = '%%0%dx' % (int((self.q.bit_length() + 7) // 8) * 2)
         return (pfmt % x)
 
-    def _byterep_q(self,x):
+    def _byterep_q(self, x):
         return unhexlify(self._hexprint_q(x))
 
     def _hashFunc(self, x):
@@ -370,7 +391,7 @@ class CHKPublicKey (object):
         Element Type
         """
         h = self._H.hashval(x)
-        if h[1] == True:
+        if h[1] is True:
             return Element.zero(self.pairing, G1)
         else:
             return Element(self.pairing, G1, value=h[0])
@@ -399,7 +420,7 @@ class CHKPublicKey (object):
 
     def Enc_DER(self, M, interval, lam=None):
         """Enc is the encryption function which takes a single element
-        and encrypts it using the encryption key for specific interval. 
+        and encrypts it using the encryption key for specific interval.
         Enc_DER produces output in ASN.1 DER binary format
         """
         ctraw = self._enc(M, interval, lam)
@@ -411,7 +432,7 @@ class CHKPublicKey (object):
             encoder.write(byteval, asn1.Numbers.OctetString)
         encoder.enter(asn1.Numbers.Sequence)
         Md = ctraw[-1]
-        for n in range(0,2):
+        for n in range(0, 2):
             byteval = self._byterep_q(Md[n])
             encoder.write(byteval, asn1.Numbers.OctetString)
         encoder.leave()
@@ -441,31 +462,33 @@ class CHKPublicKey (object):
 
 
 class CHKPrivateKey (CHKPublicKey):
-    def __init__(self, qbits, rbits, depth, order=2):
+    def __init__(self, qbits, rbits, depth, order=2, _randomize=True):
         """
         """
+        super(self.__class__, self).__init__(depth, order)
+        if _randomize is not True:
+            return
         if (qbits != int(qbits)) or (qbits < 0):
             raise ValueError("Invalid Input: qbits must be positive integer")
         if (rbits != int(rbits)) or (rbits < 0):
             raise ValueError("Invalid Input: rbits must be positive integer")
         if rbits > (qbits - 4):
             raise ValueError("Invalid Input: rbits cannot be > qbits - 4")
-        super(self.__class__, self).__init__(depth)
         self.Gen(qbits, rbits, depth, order)
 
     def Gen(self, qbits, rbits, depth, order=2):
         """The Gen function generates a pairing-based cryptosystem based on the
         CHK Model. The implementation leverages Ben Lynn's PBC library
         (https://crypto.stanford.edu/pbc/) to construct symmetric pairings.
-        
-        The values qbits rbits are the parameters passed to 
+
+        The values qbits rbits are the parameters passed to
         pbc_param_init_a_gen() to derive the pairing. Refer to the PBC
         documentation for detail and/or security implications of these values.
-        
+
         The values of depth and order define the BTree structure used to map
         intervals to keys. These parameters can be balanced to optimize for the
         requirements of a specific usage as they impact:
-        
+
         Max # of intervals = order ** depth
         Ciphertext size is proportional to depth + 3
         Max secret key size is proportional to (depth * (order - 1)) + 1
@@ -484,7 +507,6 @@ class CHKPrivateKey (CHKPublicKey):
         self.gt = self.pairing.apply(self.P, self.Q)
         self._validateParams()
         # self.cwH = CWHashFunction(self.q)
-        pointFmtCompressed = PBC_EC_Compressed
         G = (self.P[0], self.P[1])
         # print("Generator = ", G)
         self._H = IcartHash(self.q, 1, 0, G, self.r)
@@ -496,6 +518,155 @@ class CHKPrivateKey (CHKPublicKey):
         self.tree.R = R0
         S0 = self.H(self.tree.nodeId()) * alpha
         self.tree.S = (S0)
+
+    def _privateKeyToDict(self, interval):
+        pubkey = json.loads(self.publicKeyToJSON())
+        keyset = self._exportKeyset(interval)
+        if keyset is None:
+            return None
+        secrets = []
+        for k in keyset:
+            address, ckey = k[0], k[1]
+            rlist, s = ckey[0], ckey[1]
+            rstr = []
+            for r in rlist:
+                rstr.append(str(r))
+            Skey = {'Rw': rstr, 'S': str(s)}
+            key = {'depth': address[0], 'ordinal': address[1], 'secret': Skey}
+            secrets.append(key)
+        privkey = {'pubkey': pubkey, 'secrets': secrets}
+        return privkey
+
+    def privateKeyToJSON(self, interval):
+        privkey = self._privateKeyToDict(interval)
+        if privkey is None:
+            return None
+        return json.dumps(privkey)
+
+    @staticmethod
+    def _privateKeyFromDict(privkey):
+        pubkey, secrets = privkey['pubkey'], privkey['secrets']
+        pke = CHKPrivateKey(0, 0, pubkey['l'], pubkey['o'], _randomize=False)
+        pke._importPubkeyFromDict(pubkey)
+        for s in secrets:
+            node = pke.tree.findByAddress(s['depth'], s['ordinal'])
+            S = Element(pke.pairing, G1, value=s['secret']['S'])
+            Rw = []
+            for r in s['secret']['Rw']:
+                Rw.append(Element(pke.pairing, G1, value=r))
+            node.S, node.R = S, Rw
+        return pke
+
+    @staticmethod
+    def privateKeyFromJSON(privkeyJ):
+        privkey = json.loads(privkeyJ)
+        return CHKPrivateKey._privateKeyFromDict(privkey)
+
+    def privateKeyToDER(self, interval):
+        encoder = asn1.Encoder()
+        encoder.start()
+        # enter privkey
+        encoder.enter(asn1.Numbers.Sequence)
+        # encode pubkey to stream
+        self._publicKeyDEREncode(encoder)
+        # enter secrets
+        encoder.enter(asn1.Numbers.Sequence)
+        keyset = self._exportKeyset(interval)
+        if keyset is None:
+            return None
+        for k in keyset:
+            # enter key
+            encoder.enter(asn1.Numbers.Sequence)
+            address, ckey = k[0], k[1]
+            # enter address
+            encoder.enter(asn1.Numbers.Sequence)
+            # write depth, ordinal
+            encoder.write(address[0], asn1.Numbers.Integer)
+            encoder.write(address[1], asn1.Numbers.Integer)
+            # leave address
+            encoder.leave()
+            # enter Rw list
+            encoder.enter(asn1.Numbers.Sequence)
+            for r in ckey[0]:
+                # write Rw
+                encoder.write(unhexlify(str(r)), asn1.Numbers.OctetString)
+            # leave Rw list
+            encoder.leave()
+            # write S
+            encoder.write(unhexlify(str(ckey[1])), asn1.Numbers.OctetString)
+            # leave key
+            encoder.leave()
+        # leave secrets
+        encoder.leave()
+        # leave privkey
+        encoder.leave()
+        return encoder.output()
+
+    @staticmethod
+    def privateKeyFromDER(privkeyD):
+        privkey = {}
+        decoder = asn1.Decoder()
+        decoder.start(privkeyD)
+        # enter privkey
+        ensure_tag(decoder, asn1.Numbers.Sequence)
+        decoder.enter()
+        # parse pubkey portion
+        pubkey = CHKPublicKey._parseDERToDict(decoder)
+        privkey['pubkey'] = pubkey
+        print("pubkey parsed as:", str(pubkey))
+        # enter secrets
+        ensure_tag(decoder, asn1.Numbers.Sequence)
+        decoder.enter()
+        # loop over list of secrets
+        secrets = []
+        tag = decoder.peek()
+        while (tag is not None) and (tag.nr == asn1.Numbers.Sequence):
+            secret = {}
+            # enter key
+            decoder.enter()
+            # enter address
+            ensure_tag(decoder, asn1.Numbers.Sequence)
+            decoder.enter()
+            # depth, ordinal
+            ensure_tag(decoder, asn1.Numbers.Integer)
+            tag, secret['depth'] = decoder.read()
+            ensure_tag(decoder, asn1.Numbers.Integer)
+            tag, secret['ordinal'] = decoder.read()
+            # leave address
+            decoder.leave()
+            # enter Rw list
+            ensure_tag(decoder, asn1.Numbers.Sequence)
+            decoder.enter()
+            tag = decoder.peek()
+            # print('tag:', str(tag))
+            Rw = []
+            while (tag is not None) and (tag.nr == asn1.Numbers.OctetString):
+                ensure_tag(decoder, asn1.Numbers.OctetString)
+                tag, R = decoder.read()
+                # print('R key:', hexlify(R).decode())
+                Rw.append(hexlify(R).decode())
+                tag = decoder.peek()
+                # print('tag:', str(tag))
+            # leave Rw list
+            decoder.leave()
+            Skey = {}
+            Skey['Rw'] = Rw
+            # S
+            ensure_tag(decoder, asn1.Numbers.OctetString)
+            tag, S = decoder.read()
+            Skey['S'] = hexlify(S).decode()
+            secret['secret'] = Skey
+            secrets.append(secret)
+            decoder.leave()
+            tag = decoder.peek()
+        privkey['secrets'] = secrets
+        # leave secrets
+        decoder.leave()
+        # leave privkey
+        decoder.leave()
+        if decoder.eof() is not True:
+            raise ValueError("DER Content beyond expected EOF")
+        return CHKPrivateKey._privateKeyFromDict(privkey)
 
     def Der(self, interval):
         """Der derives the secret key (Rw|1, ... Rw|n-1, Rw, S) for any
@@ -516,7 +687,7 @@ class CHKPrivateKey (CHKPublicKey):
         parent_key = self._der(depth-1, interval // self.order)
         # print("parent_key = ", parent_key)
         if parent_key is None:
-            #cannot derive keys in the past
+            # cannot derive keys in the past
             return None
         parentR = parent_key[0]
         parentS = parent_key[1]
@@ -532,7 +703,7 @@ class CHKPrivateKey (CHKPublicKey):
         node.S = parentS + (H * pw)
         return (node.R, node.S)
 
-    def ExportKeyset(self, interval):
+    def _exportKeyset(self, interval):
         node = self.tree.findByAddress(self.depth, interval)
         keylist = self._deriveRightAndUpRight(node)
         ckey = self._der(node.address()[0], node.address()[1])
@@ -575,7 +746,7 @@ class CHKPrivateKey (CHKPublicKey):
         # traverses tree to erase secret keys for "back in time"
         if node.parent is None:
             return
-        # loop over peers, 
+        # loop over peers, prune children for nodes to left
         for c in node.parent.children():
             if c.nodeId() < node.nodeId():
                 c.S = None
@@ -603,7 +774,7 @@ class CHKPrivateKey (CHKPublicKey):
             C.append(Element(self.pairing, G1, value=str(Ct)))
         C.append(Element(self.pairing, GT, value=str(Ctin[-1])))
         return self._dec(C, interval)
-        
+
     def Dec_DER(self, CtinDER, interval):
         """Dec is the decryption function which translates a ciphertext into
         the message value (which is a point in Fp2) using the key for the
@@ -626,17 +797,17 @@ class CHKPrivateKey (CHKPublicKey):
             tag = decoder.peek()
         decoder.enter()
         ensure_tag(decoder, asn1.Numbers.OctetString)
-        tag, valx = decoder.read()
+        tag, vx = decoder.read()
         ensure_tag(decoder, asn1.Numbers.OctetString)
-        tag, valy = decoder.read()
+        tag, vy = decoder.read()
         decoder.leave()
         decoder.leave()
-        if decoder.eof() != True:
+        if decoder.eof() is not True:
             raise ValueError("DER Content beyond expected EOF")
-        Md = "(0x" + hexlify(valx).decode() + ", 0x" + hexlify(valy).decode() + ")"
+        Md = "(0x" + hexlify(vx).decode() + ", 0x" + hexlify(vy).decode() + ")"
         C.append(Element(self.pairing, GT, value=str(Md)))
         return self._dec(C, interval)
-        
+
     def _dec(self, C, interval):
         # internal decryption function takes a list of elements (depth + 1
         # points in G1 followed by x,y coordinates in pairing target group)
@@ -654,7 +825,7 @@ class CHKPrivateKey (CHKPublicKey):
         # print("Ri = ", R)
         assert len(R) == len(U)
         pi = self.pairing.apply(R[0], U[0])
-        for i in range(1,len(R)):
+        for i in range(1, len(R)):
             ru = self.pairing.apply(R[i], U[i])
             pi = pi * ru
         us = self.pairing.apply(U0, S)

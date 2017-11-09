@@ -31,6 +31,7 @@ from fspke.cwhash import CWHashFunction
 from ecpy.point import Point, Generator
 from Crypto.Random import random
 
+
 def _modinv(a, m):
     # Extended Euclidean Algorithm for finding inverse
     lastr, r, x, lastx = a, m, 0, 1
@@ -39,13 +40,14 @@ def _modinv(a, m):
         x, lastx = lastx - q*x, x
     return lastx % m
 
+
 class IcartHash (object):
     """IcartHash uses the method proposed by Thomas Icart(1) and extended by
     Eric Brier et. al.(2) to hash a N-bit integer value into to a elliptic
     curve group defined over a finite field, E(Fp), where 2**N > q and E is
-    in the Short Weierstrass for y**2 = x**3 + ax + b with Generator G and 
-    order n. 
-    
+    in the Short Weierstrass for y**2 = x**3 + ax + b with Generator G and
+    order n.
+
     (1) : Thomas Icart, "How to Hash into Elliptic Curves", CRYPTO2009,
     https://eprint.iacr.org/2009/226.pdf
     (2) : Eric Brier et. al., "Efficient Indifferentiable Hashing into
@@ -60,12 +62,12 @@ class IcartHash (object):
             raise ValueError("Invalid Input")
         if (b != int(b)) or (b < 0):
             raise ValueError("Invalid Input")
-        if rabinmiller.isPrime(q) != True:
+        if rabinmiller.isPrime(q) is not True:
             raise ValueError("Invalid Input: q must be prime")
         if (q % 3) != 2:
             raise ValueError("Invalid Input: q must be congruent to 2 (mod 3)")
         if (len(G) != 2):
-            raise ValueError("Invalid Input : G should be a tuple (dimension 2)")
+            raise ValueError("Invalid Input: G must be a tuple (dimension 2)")
         if (G[0] != int(G[0])) or (G[0] < 0):
             raise ValueError("Invalid Input")
         if (G[1] != int(G[1])) or (G[1] < 0):
@@ -75,13 +77,13 @@ class IcartHash (object):
         self.q = int(q)
         self.a = int(a)
         self.b = int(b)
-        self.curve = { "p" : self.q,
-              "bits" : self.q.bit_length(),
-              "n" : int(n),
-              "a" : self.a,
-              "b" : self.b,
-              "G" : (G[0], G[1])}
-        print("curve =", self.curve)
+        self.curve = {"p": self.q,
+                      "bits": self.q.bit_length(),
+                      "n": int(n),
+                      "a": self.a,
+                      "b": self.b,
+                      "G": (G[0], G[1])}
+        # print("curve =", self.curve)
         self.G = Generator.init(G[0], G[1], curve=self.curve)
         # precalculate some constants (inverses of 3, 2, 27) in Fq
         self._3inv = pow(3, self.q - 2, self.q)
@@ -94,11 +96,11 @@ class IcartHash (object):
         # print("_27inv =", self._27inv)
         assert ((27 * self._27inv) % self.q) == 1
         self._3a = (3 * a) % self.q
-        # set up H1, H2 as two random uniform hash functions based on 
+        # set up H1, H2 as two random uniform hash functions based on
         # the Carter and Wegman construction
         self.H1 = CWHashFunction(self.q)
         self.H2 = CWHashFunction(self.q)
-        
+
     def serialize(self):
         config = {}
         config['q'] = self.q
@@ -120,14 +122,14 @@ class IcartHash (object):
 
     def _cubeRoot(self, x):
         return pow(x, self._cubeRtExp, self.q)
-    
+
     def deterministicMap(self, n):
         """Using the original algorithm proposed by Thomas Icart, calculates
-        a point on E(Fp) assuming n is a member of Fq. H(0) is mapped to O
+        a point on E(Fq) assuming n is a member of Fq. H(0) is mapped to O
         (point at infinity). Points are calculated in affine coordinates and
         returned as a Point Object.
-        
-        Note: deterministicMap reliably maps Fp to E(Fp), but as not all points
+
+        Note: deterministicMap reliably maps Fq to E(Fq), but as not all points
         on the curve can be parameterized, the results are not uniform and the
         distribution is differentiable from a collection of random points
         """
@@ -135,12 +137,12 @@ class IcartHash (object):
             raise ValueError("Invalid Input")
         if n == 0:
             return Point(infinity=True, curve=self.curve)
-        # just to be sure, force x to be a member 
+        # just to be sure, force x to be a member of Fq
         u = int(n) % self.q
         # print("u = ", u)
         u6_inv = pow((6 * u) % self.q, self.q - 2, self.q)
         assert ((6 * u * u6_inv) % self.q) == 1
-        v = ((self._3a  - pow(u, 4, self.q)) * u6_inv) % self.q
+        v = ((self._3a - pow(u, 4, self.q)) * u6_inv) % self.q
         u_6 = pow(u, 6, self.q)
         # print ("u_6 =", u_6)
         # print ("27_inv =",  self._27inv)
@@ -159,26 +161,26 @@ class IcartHash (object):
         return Point(x, y, infinity=False, curve=self.curve)
 
     def uniformMap(self, n):
-        """UniformMap maps values from Fp to E(Fp) in a uniform manner by
+        """UniformMap maps values from Fq to E(Fq) in a uniform manner by
         elliptic curve point multiplication. While this does produce a uniform
         mapping within the ring of the generator point, using this map exposes
-        the discrete logarithm of the resultant point (as log.G = n). 
+        the discrete logarithm of the resultant point (as log.G = n).
         """
         if (n != int(n)) or (n < 0):
             raise ValueError("Invalid Input")
         if n == 0:
-            return Point(infinity=True,curve=self.curve)
-        # just to be sure, force x to be a member 
+            return Point(infinity=True, curve=self.curve)
+        # just to be sure, force x to be a member of Fq
         u = int(n) % self.q
         return (self.G * u)
 
-    def hashval(self,n):
+    def hashval(self, n):
         """hashval calculates a secure, uniform hash from an N-bit input
         by using two Universal Hash functions to hash from {0,1}**N -> Fp
         and the summing the results of mapping these values using the
         deterministic (Icart) map and the uniform (E.C. Point Multiplication)
-        mappings. 
-        
+        mappings.
+
         hashval takes an integer as input and returns the compressed
         representation of the point as a string.
         """

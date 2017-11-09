@@ -34,7 +34,7 @@ from fspke.icarthash import IcartHash
 
 if __name__ == '__main__':
     set_point_format_compressed()
-    pke = CHKPrivateKey(128, 100, 6, order=16)
+    pke = CHKPrivateKey(512, 400, 6, order=16)
     print("params  =", pke.params)
     assert pke._reconstructParams() == str(pke.params)
     print("q       =", pke.q)
@@ -63,6 +63,17 @@ if __name__ == '__main__':
     print("SK22 =", SK22)
     SK23 = pke._der(2,3)
     print("SK23 =", SK23)
+    # export privkey
+    privkey = pke.privateKeyToJSON(0x000000)
+    print()
+    print("privkey =", privkey)
+    print()
+    privkeyDER = pke.privateKeyToDER(0x100000)
+    print("privkey (DER)=", hexlify(privkeyDER).decode())
+    print("DER key length =", len(privkeyDER))
+    print()
+    pke4 = CHKPrivateKey.privateKeyFromJSON(privkey)
+    pke5 = CHKPrivateKey.privateKeyFromDER(privkeyDER)
     # export/import pubkey
     pubkey = pke.publicKeyToJSON()
     print('pubkey exported as (JSON):')
@@ -71,17 +82,12 @@ if __name__ == '__main__':
     pubkeyDER = pke.publicKeyToDER()
     print('pubkey exported as (DER):')
     print(hexlify(pubkeyDER).decode())
+    print("DER key length =", len(pubkeyDER))
     print()
     pke2 = CHKPublicKey.publicKeyFromJSON(pubkey)
     pubkey2 = pke2.publicKeyToJSON()
-    print('pubkey exported as (JSON):')
-    print(pubkey)
-    print()
     pke3 = CHKPublicKey.publicKeyFromDER(pubkeyDER)
     pubkey3DER = pke3.publicKeyToDER()
-    print('pubkey exported as (DER):')
-    print(hexlify(pubkey3DER).decode())
-    print()
     assert pubkey3DER == pubkeyDER
     assert pubkey2 == pubkey
     SK123456 = pke.Der(0x123456)
@@ -109,23 +115,31 @@ if __name__ == '__main__':
         assert str(C2) == str(C3)
         if True:
             d = pke.Dec(C,0x123456)
+            d_4 = pke4.Dec(C,0x123456)
+            d_5 = pke5.Dec(C,0x123456)
             dn = pke.Dec(C,0x56789A)
             d2 = pke.Dec(C3,0x56789A)
+            d2_4 = pke4.Dec(C3,0x56789A)
+            d2_5 = pke5.Dec(C3,0x56789A)
             d2n = pke.Dec(C3,0x123456)
             d4 = pke.Dec_DER(C4,0x56789A)
             print("decrypted 1 = ", str(d))
             print("decrypted 2 = ", str(d2))
             print("decrypted 1n = ", str(dn))
             print("decrypted 2n = ", str(d2n))
+            assert d == d_4
+            assert d == d_5
             assert d == me
             assert dn != me
+            assert d2 == d2_4
+            assert d2 == d2_5
             assert d2 == me
             assert d2n != me
-    keyset = pke.ExportKeyset(0x000000)
+    keyset = pke._exportKeyset(0x000000)
     print("Max keys = ", len(keyset))
     print("forgetting before 0x200000")
     pke.ForgetBefore(0x200000)
-    keyset = pke.ExportKeyset(0x200000)
+    keyset = pke._exportKeyset(0x200000)
     print("Keys @ 0x200000 = ", len(keyset))
     # for k in keyset:
     #     print("key @ %s = %s" % (k[0], k[1]))
@@ -140,7 +154,7 @@ if __name__ == '__main__':
     assert SKxDEF123 == SKDEF123
     print("forgetting before 0x700000")
     pke.ForgetBefore(0x700000)
-    keyset = pke.ExportKeyset(0x700000)
+    keyset = pke._exportKeyset(0x700000)
     print("Keys @ 0x700000 = ", len(keyset))
     # for k in keyset:
     #     print("key @ %s = %s" % (k[0], k[1]))
