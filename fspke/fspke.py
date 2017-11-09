@@ -35,6 +35,11 @@ from binascii import hexlify, unhexlify
 import json
 import asn1
 
+def ensure_tag(decoder, expected):
+    tag = decoder.peek()
+    if tag.nr != expected:
+        raise ValueError("Error in DER format, expected tag %d, got %d" % (expected, tag.nr))
+
 """fspke implements a cryptosystem based on the Canetti, Halevi and Katz
    model as defined in "A Forward-Secure Public-Key Encryption Scheme",
    published in Eurocrypt2003, archived (https://eprint.iacr.org/2003/083).
@@ -158,7 +163,7 @@ class CHKPublicKey (object):
         # no need to write the same value multiple times
         assert hashconfig['q'] == self.q
         # encoder.write(hashconfig['q'], asn1.Numbers.Integer)
-        # no need to write a, b curve parameters as this implementation
+        # no need to write a, b, n curve parameters as this implementation
         # uses PBC's "type a" curve with a=1, b=0, n = order from pairing (r)
         assert hashconfig['a'] == 1
         assert hashconfig['b'] == 0
@@ -203,79 +208,51 @@ class CHKPublicKey (object):
         decoder = asn1.Decoder()
         decoder.start(pubkeyD)
         # enter all
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Sequence:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
         # curve/pairing parameters
         params = {}
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Sequence:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
         # q
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, params['q'] = decoder.read()
         # h
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, params['h'] = decoder.read()
         # r
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, params['r'] = decoder.read()
         # exp2
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, params['exp2'] = decoder.read()
         # exp1
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, params['exp1'] = decoder.read()
         # sign1
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, params['sign1'] = decoder.read()
         # sign0
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, params['sign0'] = decoder.read()
         decoder.leave()
         pubkey['params'] = params
         # P point
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.OctetString:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.OctetString)
         tag, P = decoder.read()
         pubkey['P'] = hexlify(P).decode()
         # Q point
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.OctetString:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.OctetString)
         tag, Q = decoder.read()
         pubkey['Q'] = hexlify(Q).decode()
         # depth
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, pubkey['l'] = decoder.read()
         # order
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, pubkey['o'] = decoder.read()
         # enter hash
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Sequence:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
         hashconfig = {}
         hashconfig['q'] = params['q']
@@ -283,41 +260,27 @@ class CHKPublicKey (object):
         hashconfig['b'] = 0
         hashconfig['n'] = params['r']
         # hash G point - same point as P, but different format
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Sequence:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
         # G[0]
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, G0 = decoder.read()
         # G[1]
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, G1 = decoder.read()
         hashconfig['G'] = (G0, G1)
         decoder.leave()
         # H1
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Sequence:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
         # p
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, p = decoder.read()
         # a
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, a = decoder.read()
         # b
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, b = decoder.read()
         hashconfig['H1'] = {'q' : params['q'],
                             'p' : p,
@@ -325,24 +288,16 @@ class CHKPublicKey (object):
                             'b' : b}
         decoder.leave()
         # H2
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Sequence:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
         # p
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, p = decoder.read()
         # a
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, a = decoder.read()
         # b
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Integer:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Integer)
         tag, b = decoder.read()
         hashconfig['H2'] = {'q' : params['q'],
                             'p' : p,
@@ -352,6 +307,8 @@ class CHKPublicKey (object):
         pubkey['H'] = hashconfig
         decoder.leave()
         decoder.leave()
+        if decoder.eof() != True:
+            raise ValueError("DER Content beyond expected EOF")
         pke = CHKPublicKey(pubkey['l'], pubkey['o'])
         pke._importPubkeyFromDict(pubkey)
         return pke
@@ -658,31 +615,24 @@ class CHKPrivateKey (CHKPublicKey):
         # pairing object (e.g. test code with multiple pkes)
         decoder = asn1.Decoder()
         decoder.start(CtinDER)
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.Sequence:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
         C = []
         tag = decoder.peek()
         while tag.nr != asn1.Numbers.Sequence:
-            if tag.nr != asn1.Numbers.OctetString:
-                raise ValueError("Unexpected DER tag")
+            ensure_tag(decoder, asn1.Numbers.OctetString)
             tag, val = decoder.read()
             C.append(Element(self.pairing, G1, value=hexlify(val).decode()))
             tag = decoder.peek()
         decoder.enter()
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.OctetString:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.OctetString)
         tag, valx = decoder.read()
-        tag = decoder.peek()
-        if tag.nr != asn1.Numbers.OctetString:
-            raise ValueError("Unexpected DER tag")
+        ensure_tag(decoder, asn1.Numbers.OctetString)
         tag, valy = decoder.read()
         decoder.leave()
         decoder.leave()
         if decoder.eof() != True:
-            raise ValueError("Unexpected DER tag")
+            raise ValueError("DER Content beyond expected EOF")
         Md = "(0x" + hexlify(valx).decode() + ", 0x" + hexlify(valy).decode() + ")"
         C.append(Element(self.pairing, GT, value=str(Md)))
         return self._dec(C, interval)
