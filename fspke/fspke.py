@@ -613,7 +613,6 @@ class CHKPrivateKey (CHKPublicKey):
         # parse pubkey portion
         pubkey = CHKPublicKey._parseDERToDict(decoder)
         privkey['pubkey'] = pubkey
-        print("pubkey parsed as:", str(pubkey))
         # enter secrets
         ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
@@ -819,6 +818,8 @@ class CHKPrivateKey (CHKPublicKey):
         # print("Ui (i=1..t) = ", U)
         # print("V = ", V)
         SK = self.Der(interval)
+        if SK is None:
+            return None
         S = SK[1]
         R = SK[0]
         # print("S = ", S)
