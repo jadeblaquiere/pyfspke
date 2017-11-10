@@ -41,7 +41,7 @@ Simple CLI tool examples utilizing CHK forward secure PKE
 1. Derive a private key for an interval (the future)
 
     ```
-    cat bob.privkey | python3 chk-der.py --interval=20 > bob20.privkey
+    cat bob.privkey | python3 chk-der.py 20 > bob20.privkey
     ```
 
 1. Encode a message for the future

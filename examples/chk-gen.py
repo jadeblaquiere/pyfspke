@@ -26,7 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from fspke.fspke import CHKPrivateKey
+from fspke.chk import CHKPrivateKey
 from argparse import ArgumentParser
 import base64
 

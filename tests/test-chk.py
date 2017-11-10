@@ -28,7 +28,7 @@
 
 from Crypto.Random import random
 from pypbc import *
-from fspke.fspke import *
+from fspke.chk import *
 from fspke.simplebtree import SimpleNTree
 from fspke.icarthash import IcartHash
 

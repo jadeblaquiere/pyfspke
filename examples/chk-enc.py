@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import pypbc
-from fspke.fspke import CHKPublicKey
+from fspke.chk import CHKPublicKey
 from argparse import ArgumentParser
 import base64
 import sys
