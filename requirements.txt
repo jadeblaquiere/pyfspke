@@ -1,0 +1,4 @@
+pycrypto
+git+https://github.com/jadeblaquiere/pypbc.git
+git+https://github.com/jadeblaquiere/ecpy.git
+asn1
