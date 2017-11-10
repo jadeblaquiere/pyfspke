@@ -48,7 +48,15 @@ else:
         PEMkey=keyfile.read()
 
 DERkey = base64.b64decode(PEMkey.split('-----')[2].encode())
-privkey = CHKPrivateKey.privateKeyFromDER(DERkey)
+
+try:
+    privkey = CHKPrivateKey.privateKeyFromDER(DERkey)
+except ValueError:
+    sys.exit('Error: Unable to import private key, aborting.')
+
+if privkey is None:
+    sys.exit('Error: Unable to import private key, aborting.')
+
 DERkey = privkey.privateKeyToDER(clargs.interval)
 print('-----BEGIN CHK PUBLIC KEY-----')
 print(base64.b64encode(DERkey).decode())

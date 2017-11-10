@@ -103,4 +103,4 @@ aescipher = AES.new(AESkey, AES.MODE_CTR, counter=counter)
 # encrypt message (symmetric encryption)
 message = aescipher.decrypt(aes_ct)
 
-print(message.decode())
+print(message.decode(), end='')
