@@ -19,3 +19,6 @@ cd ..
 
 echo "INSTALLING PBC PYTHON BINDINGS"
 sudo pip3 install git+https://github.com/jadeblaquiere/pypbc.git
+sudo pip3 install pycrypto
+sudo pip3 install git+https://github.com/jadeblaquiere/ecpy.git
+sudo pip3 install asn1
