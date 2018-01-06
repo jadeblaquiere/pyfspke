@@ -169,6 +169,7 @@ class CHKPublicKey (object):
         encoder.enter(asn1.Numbers.Sequence)
         hashconfig = self._H.serialize()
         # no need to write the same value multiple times
+        encoder.enter(asn1.Numbers.Sequence)
         assert hashconfig['q'] == self.q
         # encoder.write(hashconfig['q'], asn1.Numbers.Integer)
         # no need to write a, b, n curve parameters as this implementation
@@ -183,6 +184,7 @@ class CHKPublicKey (object):
         encoder.enter(asn1.Numbers.Sequence)
         encoder.write(hashconfig['G'][0], asn1.Numbers.Integer)
         encoder.write(hashconfig['G'][1], asn1.Numbers.Integer)
+        encoder.leave()
         encoder.leave()
         # hash function - CW Hash 1
         encoder.enter(asn1.Numbers.Sequence)
@@ -260,6 +262,9 @@ class CHKPublicKey (object):
         ensure_tag(decoder, asn1.Numbers.Sequence)
         # enter H func
         decoder.enter()
+        ensure_tag(decoder, asn1.Numbers.Sequence)
+        # enter Curve
+        decoder.enter()
         hashconfig = {}
         hashconfig['q'] = params['q']
         hashconfig['a'] = 1
@@ -277,6 +282,8 @@ class CHKPublicKey (object):
         tag, G1 = decoder.read()
         hashconfig['G'] = (G0, G1)
         # leave Generator
+        decoder.leave()
+        # leave Curve
         decoder.leave()
         # H1
         ensure_tag(decoder, asn1.Numbers.Sequence)
