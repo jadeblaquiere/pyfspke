@@ -151,9 +151,12 @@ class CHKPublicKey (object):
         encoder.enter(asn1.Numbers.Sequence)
         # curve/pairing parameters
         encoder.enter(asn1.Numbers.Sequence)
-        encoder.write(self.q, asn1.Numbers.Integer)
-        encoder.write(self.h, asn1.Numbers.Integer)
-        encoder.write(self.r, asn1.Numbers.Integer)
+        bfmt = '%%0%dX' % ((((self.q.bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % self.q), asn1.Numbers.OctetString)
+        bfmt = '%%0%dX' % ((((self.r.bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % self.r), asn1.Numbers.OctetString)
+        bfmt = '%%0%dX' % ((((self.h.bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % self.h), asn1.Numbers.OctetString)
         encoder.write(self.exp2, asn1.Numbers.Integer)
         encoder.write(self.exp1, asn1.Numbers.Integer)
         encoder.write(self.sign1, asn1.Numbers.Integer)
@@ -169,7 +172,7 @@ class CHKPublicKey (object):
         encoder.enter(asn1.Numbers.Sequence)
         hashconfig = self._H.serialize()
         # no need to write the same value multiple times
-        encoder.enter(asn1.Numbers.Sequence)
+        # encoder.enter(asn1.Numbers.Sequence)
         assert hashconfig['q'] == self.q
         # encoder.write(hashconfig['q'], asn1.Numbers.Integer)
         # no need to write a, b, n curve parameters as this implementation
@@ -182,29 +185,49 @@ class CHKPublicKey (object):
         # encoder.write(hashconfig['n'], asn1.Numbers.Integer)
         # hash function - generator Point
         encoder.enter(asn1.Numbers.Sequence)
-        encoder.write(hashconfig['G'][0], asn1.Numbers.Integer)
-        encoder.write(hashconfig['G'][1], asn1.Numbers.Integer)
+        bfmt = '%%0%dX' % ((((hashconfig['G'][0].bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % hashconfig['G'][0]), asn1.Numbers.OctetString)
+        # encoder.write(hashconfig['G'][0], asn1.Numbers.Integer)
+        bfmt = '%%0%dX' % ((((hashconfig['G'][1].bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % hashconfig['G'][1]), asn1.Numbers.OctetString)
+        # encoder.write(hashconfig['G'][1], asn1.Numbers.Integer)
         encoder.leave()
-        encoder.leave()
+        # encoder.leave()
         # hash function - CW Hash 1
         encoder.enter(asn1.Numbers.Sequence)
         cwhconfig = hashconfig['H1']
         assert cwhconfig['q'] == self.q
         # no need to write the same value multiple times
+        bfmt = '%%0%dX' % ((((cwhconfig['p'].bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % cwhconfig['p']), asn1.Numbers.OctetString)
+        # encoder.write(cwhconfig['p'], asn1.Numbers.Integer)
+        # bfmt = '%%0%dX' % ((((cwhconfig['q'].bit_length()) + 7) // 8) * 2)
+        # encoder.write(unhexlify(bfmt % cwhconfig['q']), asn1.Numbers.OctetString)
         # encoder.write(cwhconfig['q'], asn1.Numbers.Integer)
-        encoder.write(cwhconfig['p'], asn1.Numbers.Integer)
-        encoder.write(cwhconfig['a'], asn1.Numbers.Integer)
-        encoder.write(cwhconfig['b'], asn1.Numbers.Integer)
+        bfmt = '%%0%dX' % ((((cwhconfig['a'].bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % cwhconfig['a']), asn1.Numbers.OctetString)
+        # encoder.write(cwhconfig['a'], asn1.Numbers.Integer)
+        bfmt = '%%0%dX' % ((((cwhconfig['b'].bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % cwhconfig['b']), asn1.Numbers.OctetString)
+        # encoder.write(cwhconfig['b'], asn1.Numbers.Integer)
         encoder.leave()
         # hash function - CW Hash 2
         encoder.enter(asn1.Numbers.Sequence)
         cwhconfig = hashconfig['H2']
         assert cwhconfig['q'] == self.q
         # no need to write the same value multiple times
+        bfmt = '%%0%dX' % ((((cwhconfig['p'].bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % cwhconfig['p']), asn1.Numbers.OctetString)
+        # encoder.write(cwhconfig['p'], asn1.Numbers.Integer)
+        # bfmt = '%%0%dX' % ((((cwhconfig['q'].bit_length()) + 7) // 8) * 2)
+        # encoder.write(unhexlify(bfmt % cwhconfig['q']), asn1.Numbers.OctetString)
         # encoder.write(cwhconfig['q'], asn1.Numbers.Integer)
-        encoder.write(cwhconfig['p'], asn1.Numbers.Integer)
-        encoder.write(cwhconfig['a'], asn1.Numbers.Integer)
-        encoder.write(cwhconfig['b'], asn1.Numbers.Integer)
+        bfmt = '%%0%dX' % ((((cwhconfig['a'].bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % cwhconfig['a']), asn1.Numbers.OctetString)
+        # encoder.write(cwhconfig['a'], asn1.Numbers.Integer)
+        bfmt = '%%0%dX' % ((((cwhconfig['b'].bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % cwhconfig['b']), asn1.Numbers.OctetString)
+        # encoder.write(cwhconfig['b'], asn1.Numbers.Integer)
         encoder.leave()
         # leave hash config
         encoder.leave()
@@ -222,14 +245,26 @@ class CHKPublicKey (object):
         ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
         # q
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, params['q'] = decoder.read()
-        # h
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, params['h'] = decoder.read()
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        params['q'] = int(hexlify(qhex), 16);
+        # q
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        params['r'] = int(hexlify(qhex), 16);
+        # q
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        params['h'] = int(hexlify(qhex), 16);
+        # q
+        #ensure_tag(decoder, asn1.Numbers.Integer)
+        #tag, params['q'] = decoder.read()
         # r
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, params['r'] = decoder.read()
+        #ensure_tag(decoder, asn1.Numbers.Integer)
+        #tag, params['r'] = decoder.read()
+        # h
+        #ensure_tag(decoder, asn1.Numbers.Integer)
+        #tag, params['h'] = decoder.read()
         # exp2
         ensure_tag(decoder, asn1.Numbers.Integer)
         tag, params['exp2'] = decoder.read()
@@ -262,9 +297,9 @@ class CHKPublicKey (object):
         ensure_tag(decoder, asn1.Numbers.Sequence)
         # enter H func
         decoder.enter()
-        ensure_tag(decoder, asn1.Numbers.Sequence)
+        # ensure_tag(decoder, asn1.Numbers.Sequence)
         # enter Curve
-        decoder.enter()
+        # decoder.enter()
         hashconfig = {}
         hashconfig['q'] = params['q']
         hashconfig['a'] = 1
@@ -275,30 +310,49 @@ class CHKPublicKey (object):
         # enter Generator point
         decoder.enter()
         # G[0]
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, G0 = decoder.read()
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        G0 = int(hexlify(qhex), 16);
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, G0 = decoder.read()
         # G[1]
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, G1 = decoder.read()
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        G1 = int(hexlify(qhex), 16);
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, G1 = decoder.read()
         hashconfig['G'] = (G0, G1)
         # leave Generator
         decoder.leave()
         # leave Curve
-        decoder.leave()
+        # decoder.leave()
         # H1
         ensure_tag(decoder, asn1.Numbers.Sequence)
         # enter H1
         decoder.enter()
         # p
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, p = decoder.read()
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        p = int(hexlify(qhex), 16);
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, p = decoder.read()
+        # q
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, q = decoder.read()
+        q = params['q']
         # a
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, a = decoder.read()
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        a = int(hexlify(qhex), 16);
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, a = decoder.read()
         # b
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, b = decoder.read()
-        hashconfig['H1'] = {'q': params['q'],
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        b = int(hexlify(qhex), 16);
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, b = decoder.read()
+        hashconfig['H1'] = {'q': q,
                             'p': p,
                             'a': a,
                             'b': b}
@@ -309,15 +363,28 @@ class CHKPublicKey (object):
         # enter H2
         decoder.enter()
         # p
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, p = decoder.read()
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        p = int(hexlify(qhex), 16);
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, p = decoder.read()
+        # q
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, q = decoder.read()
+        q = params['q']
         # a
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, a = decoder.read()
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        a = int(hexlify(qhex), 16);
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, a = decoder.read()
         # b
-        ensure_tag(decoder, asn1.Numbers.Integer)
-        tag, b = decoder.read()
-        hashconfig['H2'] = {'q': params['q'],
+        ensure_tag(decoder, asn1.Numbers.OctetString)
+        tag, qhex = decoder.read()
+        b = int(hexlify(qhex), 16);
+        # ensure_tag(decoder, asn1.Numbers.Integer)
+        # tag, b = decoder.read()
+        hashconfig['H2'] = {'q': q,
                             'p': p,
                             'a': a,
                             'b': b}
