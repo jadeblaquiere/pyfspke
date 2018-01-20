@@ -163,8 +163,17 @@ class CHKPublicKey (object):
         encoder.write(self.sign0, asn1.Numbers.Integer)
         encoder.leave()
         # base points
-        encoder.write(unhexlify(str(self.P)), asn1.Numbers.OctetString)
-        encoder.write(unhexlify(str(self.Q)), asn1.Numbers.OctetString)
+        # curve/pairing parameters
+        encoder.enter(asn1.Numbers.Sequence)
+        bfmt = '%%0%dX' % ((((self.q.bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % self.P[0]), asn1.Numbers.OctetString)
+        encoder.write(unhexlify(bfmt % self.P[1]), asn1.Numbers.OctetString)
+        encoder.leave()
+        encoder.enter(asn1.Numbers.Sequence)
+        bfmt = '%%0%dX' % ((((self.q.bit_length()) + 7) // 8) * 2)
+        encoder.write(unhexlify(bfmt % self.Q[0]), asn1.Numbers.OctetString)
+        encoder.write(unhexlify(bfmt % self.Q[1]), asn1.Numbers.OctetString)
+        encoder.leave()
         # btree dimensions
         encoder.write(self.depth, asn1.Numbers.Integer)
         encoder.write(self.order, asn1.Numbers.Integer)
@@ -281,13 +290,25 @@ class CHKPublicKey (object):
         decoder.leave()
         pubkey['params'] = params
         # P point
+        ensure_tag(decoder, asn1.Numbers.Sequence)
+        decoder.enter()
         ensure_tag(decoder, asn1.Numbers.OctetString)
         tag, P = decoder.read()
-        pubkey['P'] = hexlify(P).decode()
+        px = hexlify(P).decode()
+        tag, P = decoder.read()
+        py = hexlify(P).decode()
+        pubkey['P'] = '04' + px + py
+        decoder.leave()
         # Q point
+        ensure_tag(decoder, asn1.Numbers.Sequence)
+        decoder.enter()
         ensure_tag(decoder, asn1.Numbers.OctetString)
         tag, Q = decoder.read()
-        pubkey['Q'] = hexlify(Q).decode()
+        qx = hexlify(Q).decode()
+        tag, Q = decoder.read()
+        qy = hexlify(Q).decode()
+        pubkey['Q'] = '04' + qx + qy
+        decoder.leave()
         # depth
         ensure_tag(decoder, asn1.Numbers.Integer)
         tag, pubkey['l'] = decoder.read()
