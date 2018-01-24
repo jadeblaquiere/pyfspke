@@ -522,9 +522,11 @@ class CHKPublicKey (object):
         encoder = asn1.Encoder()
         encoder.start()
         encoder.enter(asn1.Numbers.Sequence)
+        encoder.enter(asn1.Numbers.Sequence)
         for c in ctraw[:-1]:
             byteval = unhexlify(str(c))
             encoder.write(byteval, asn1.Numbers.OctetString)
+        encoder.leave()
         encoder.enter(asn1.Numbers.Sequence)
         Md = ctraw[-1]
         for n in range(0, 2):
@@ -882,13 +884,16 @@ class CHKPrivateKey (CHKPublicKey):
         decoder.start(CtinDER)
         ensure_tag(decoder, asn1.Numbers.Sequence)
         decoder.enter()
+        ensure_tag(decoder, asn1.Numbers.Sequence)
+        decoder.enter()
         C = []
         tag = decoder.peek()
-        while tag.nr != asn1.Numbers.Sequence:
+        while tag is not None:
             ensure_tag(decoder, asn1.Numbers.OctetString)
             tag, val = decoder.read()
             C.append(Element(self.pairing, G1, value=hexlify(val).decode()))
             tag = decoder.peek()
+        decoder.leave()
         decoder.enter()
         ensure_tag(decoder, asn1.Numbers.OctetString)
         tag, vx = decoder.read()
