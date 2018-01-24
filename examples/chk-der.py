@@ -58,6 +58,6 @@ if privkey is None:
     sys.exit('Error: Unable to import private key, aborting.')
 
 DERkey = privkey.privateKeyToDER(clargs.interval)
-print('-----BEGIN CHK PUBLIC KEY-----')
+print('-----BEGIN CHK PRIVATE KEY-----')
 print(base64.b64encode(DERkey).decode())
-print('-----END CHK PUBLIC KEY-----')
+print('-----END CHK PRIVATE KEY-----')
